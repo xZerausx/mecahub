@@ -25,6 +25,34 @@ describe("decode", () => {
     });
   });
 
+  // derivado del layout: doc 3.8, 3.17, 3.21, 3.23 (see attached-io/port-input/port-value tests)
+  it("dispatches attached I/O, input format and port value messages", () => {
+    expect(decode(b(0x05, 0x00, 0x04, 0x01, 0x00))).toEqual({
+      type: "hubAttachedIo",
+      event: "detached",
+      port: 1,
+    });
+    expect(decode(b(0x0a, 0x00, 0x41, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x01))).toEqual({
+      type: "portInputFormatSetup",
+      port: 0,
+      mode: 2,
+      deltaInterval: 1,
+      notify: true,
+    });
+    expect(decode(b(0x0a, 0x00, 0x47, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x01))).toEqual({
+      type: "portInputFormat",
+      port: 0,
+      mode: 2,
+      deltaInterval: 1,
+      notify: true,
+    });
+    expect(decode(b(0x05, 0x00, 0x45, 0x00, 0x07))).toEqual({
+      type: "portValue",
+      port: 0,
+      raw: b(0x07),
+    });
+  });
+
   it("returns unknown for unmodelled message types, keeping the payload", () => {
     expect(decode(b(0x06, 0x00, 0x99, 0xde, 0xad, 0xbe))).toEqual({
       type: "unknown",
@@ -99,6 +127,25 @@ describe("decode", () => {
     );
     fc.assert(
       fc.property(type, first, second, fc.uint8Array({ maxLength: 20 }), (t, a, c, rest) =>
+        decodesSafely(encodeFrame(t, Uint8Array.of(a, c, ...rest))),
+      ),
+      { seed: 0x6d6563, numRuns: 1000 },
+    );
+  });
+
+  it("never throws for attached I/O, input format and port value frames (fixed seed)", () => {
+    const type = fc.constantFrom(
+      MessageType.HubAttachedIo,
+      MessageType.PortValueSingle,
+      MessageType.PortInputFormatSetupSingle,
+      MessageType.PortInputFormatSingle,
+    );
+    const lead = fc.oneof(
+      fc.integer({ min: 0, max: 0xff }),
+      fc.constantFrom(0x00, 0x01, 0x02, 0x10),
+    );
+    fc.assert(
+      fc.property(type, lead, lead, fc.uint8Array({ maxLength: 20 }), (t, a, c, rest) =>
         decodesSafely(encodeFrame(t, Uint8Array.of(a, c, ...rest))),
       ),
       { seed: 0x6d6563, numRuns: 1000 },

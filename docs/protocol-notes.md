@@ -22,6 +22,12 @@ Found in code (`rg "TODO\(hw\)" packages`):
 - Two-byte length field (messages over 127 bytes): literal from doc 3.2 only; the reference libraries do not cover it (pylgbst and node-poweredup emit one byte).
 - Version values with non-BCD digits or bit 31 set: decode is lenient (`bcd: false`, raw Int32 kept); real hub behaviour untested.
 - Advertising name longer than 14 bytes: decode tolerates it. Real hubs untested.
+- Hub Attached I/O (0x04): endianness of ioType and revisions is not stated in doc 3.8 (little-endian assumed; pylgbst hub.py:164, node-poweredup lpf2hub.ts:240 and pybricksdev messages.py:516 agree). Unknown ioType values are kept raw, never an error.
+- Port Input Format Setup/Format (0x41/0x47): delta interval endianness not stated in doc 3.17/3.23 (LE assumed). Non-zero notify treated as enabled, matching pylgbst/pybricksdev; TODO(hw) confirm hub only sends 0/1.
+- Port Value (Single) (0x45): value endianness not stated in doc 3.21 (LE assumed). Decode keeps `raw` because the size depends on the port mode; `readPortValue` needs the Value Format from Port Mode Information (0x44), not yet modelled.
+- Port Value multi-port (several ports in one 0x45, doc 3.21): out of scope. Decode treats everything after the first port id as that port's `raw`, so a multi-port frame yields mixed bytes. Needs the modes of every port to split.
+- Doc section numbers: the fetched doc lists Port Value (Single) as 3.21 and Port Input Format (Single) as 3.23 (the task brief said 3.20/3.21).
+- The pylgbst vectors for 0x04/0x47/0x45 come from its mocked tests (test_hub.py:36-117), not hub captures.
 
 Resolved by cross-checking (no longer TODO(hw)):
 
