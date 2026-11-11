@@ -41,10 +41,11 @@ const isAscii = (bytes: ArrayLike<number>) => Array.from(bytes).every((c) => c <
 function writeValue(w: Writer, v: HubPropertyValue): void {
   switch (v.property) {
     case "advertisingName": {
-      if (v.value.length < 1 || v.value.length > MAX_NAME || !/^[\x00-\x7f]+$/.test(v.value)) {
+      const codes = Array.from(v.value, (c) => c.charCodeAt(0));
+      if (codes.length < 1 || v.value.length > MAX_NAME || !isAscii(codes)) {
         throw new RangeError("advertising name must be 1..14 ASCII characters");
       }
-      w.bytes(Array.from(v.value, (c) => c.charCodeAt(0)));
+      w.bytes(codes);
       return;
     }
     case "button":
