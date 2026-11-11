@@ -27,6 +27,7 @@ export function encodeHubAttachedIo(msg: HubAttachedIoMessage<Version>): Uint8Ar
   return encodeFrame(T, w.toBytes());
 }
 
+// TODO(hw): the doc does not state endianness for ioType and revisions; little-endian assumed.
 /** Decodes the payload (after the common header) of a Hub Attached I/O message (doc 3.8). */
 export function decodeHubAttachedIo(payload: Uint8Array): HubAttachedIoMessage | DecodeError {
   return guardReads(T, () => {

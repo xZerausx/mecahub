@@ -9,6 +9,7 @@ export type PortValueKind = "u8" | "i8" | "u16" | "i16" | "i32" | "f32";
 
 const SIZE: Record<PortValueKind, number> = { u8: 1, i8: 1, u16: 2, i16: 2, i32: 4, f32: 4 };
 
+// TODO(hw): the doc does not state endianness for port values; little-endian assumed.
 /** Reads one little-endian value from the start of `raw`; undefined when `raw` is too short. */
 export function readPortValue(raw: Uint8Array, kind: PortValueKind): number | undefined {
   if (raw.length < SIZE[kind]) return undefined;

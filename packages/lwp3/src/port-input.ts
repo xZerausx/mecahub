@@ -20,6 +20,8 @@ const write = (type: number, m: Fields): Uint8Array =>
       .toBytes(),
   );
 
+// TODO(hw): the doc does not state endianness for the delta interval; little-endian assumed
+// (pylgbst, pybricksdev and node-poweredup all write it LE).
 /** Same payload for 0x41 (doc 3.17) and 0x47 (doc 3.23): port, mode, u32 delta, notify. */
 function read(type: number, payload: Uint8Array): Fields | DecodeError {
   return guardReads(type, () => {
