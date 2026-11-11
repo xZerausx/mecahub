@@ -1,3 +1,5 @@
+export { FakeTransport } from "./fake.js";
+export type { FakeTransportOptions } from "./fake.js";
 export {
   LWP3_CHARACTERISTIC_UUID,
   LWP3_SERVICE_UUID,

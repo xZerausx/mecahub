@@ -5,6 +5,7 @@ describe("@mecahub/transport", () => {
   it("exports the public runtime API", () => {
     expect(Object.keys(api).sort()).toEqual(
       [
+        "FakeTransport",
         "LWP3_CHARACTERISTIC_UUID",
         "LWP3_SERVICE_UUID",
         "TransportError",
