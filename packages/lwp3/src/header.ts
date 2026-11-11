@@ -1,6 +1,6 @@
 import type { DecodeError } from "./messages.js";
 
-const MAX_LENGTH = 0x3fff;
+export const MAX_LENGTH = 0x3fff;
 
 /** Encodes the total message length: 1 byte up to 127, else `0x80 | (len & 0x7f)`, `len >> 7`. */
 export function encodeLength(total: number): Uint8Array {
