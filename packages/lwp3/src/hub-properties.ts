@@ -103,7 +103,7 @@ function readValue(r: Reader, property: HubPropertyName): HubPropertyValue | Dec
     }
     case "rssi": {
       const v = r.i8();
-      return v > 0 ? bad(at) : { property, value: v };
+      return v > 0 || v < -127 ? bad(at) : { property, value: v };
     }
     case "batteryVoltage": {
       const v = r.u8();

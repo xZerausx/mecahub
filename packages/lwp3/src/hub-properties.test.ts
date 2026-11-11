@@ -193,6 +193,7 @@ describe("hub properties", () => {
     ["button value 2", b(0x02, 0x06, 0x02)],
     ["battery 101", b(0x06, 0x06, 101)],
     ["rssi positive", b(0x05, 0x06, 0x01)],
+    ["rssi -128 (doc range is -127..0)", b(0x05, 0x06, 0x80)],
     ["non-ASCII name", b(0x01, 0x06, 0xc3, 0xb1)],
   ])("errors on bad field: %s", (_n, payload) => {
     expect(decodeHubProperty(payload)).toMatchObject({
