@@ -21,4 +21,4 @@ export type {
   UnknownMessage,
 } from "./messages.js";
 export { decodeVersion, encodeVersion } from "./version.js";
-export type { Version } from "./version.js";
+export type { DecodedVersion, Version } from "./version.js";

@@ -98,8 +98,8 @@ function readValue(r: Reader, property: HubPropertyName): HubPropertyValue | Dec
     }
     case "firmwareVersion":
     case "hardwareVersion": {
-      const v = decodeVersion(r.i32());
-      return v ? { property, value: v } : bad(at);
+      // Lenient: a non-BCD version is flagged (`bcd: false`), never a bad-field error.
+      return { property, value: decodeVersion(r.i32()) };
     }
     case "rssi": {
       const v = r.i8();

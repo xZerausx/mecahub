@@ -71,7 +71,7 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
       type: "hubProperty",
       operation: "update",
       property: "firmwareVersion",
-      value: { major: 1, minor: 7, bugfix: 37, build: 1510 },
+      value: { raw: 0x17371510, bcd: true, major: 1, minor: 7, bugfix: 37, build: 1510 },
     },
     bytes: b(0x09, 0x00, 0x01, 0x03, 0x06, 0x10, 0x15, 0x37, 0x17),
   },
@@ -82,7 +82,7 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
       type: "hubProperty",
       operation: "update",
       property: "hardwareVersion",
-      value: { major: 1, minor: 0, bugfix: 0, build: 0 },
+      value: { raw: 0x10000000, bcd: true, major: 1, minor: 0, bugfix: 0, build: 0 },
     },
     bytes: b(0x09, 0x00, 0x01, 0x04, 0x06, 0x00, 0x00, 0x00, 0x10),
   },
@@ -191,8 +191,6 @@ describe("hub properties", () => {
   it.each([
     ["unknown operation", b(0x02, 0x09)],
     ["button value 2", b(0x02, 0x06, 0x02)],
-    ["non-BCD firmware", b(0x03, 0x06, 0x1f, 0x15, 0x37, 0x17)],
-    ["negative firmware (bit 31)", b(0x03, 0x06, 0, 0, 0, 0x80)],
     ["battery 101", b(0x06, 0x06, 101)],
     ["rssi positive", b(0x05, 0x06, 0x01)],
     ["non-ASCII name", b(0x01, 0x06, 0xc3, 0xb1)],
@@ -201,6 +199,20 @@ describe("hub properties", () => {
       kind: "error",
       reason: "bad-field",
       messageType: 0x01,
+    });
+  });
+
+  // TODO(hw): the doc does not say what a hub sends for non-BCD versions; a version must not
+  // turn the whole property update into a bad-field error.
+  it("decodes non-BCD and bit-31 versions leniently (raw kept, bcd=false)", () => {
+    expect(decodeHubProperty(b(0x03, 0x06, 0x1f, 0x15, 0x37, 0x17))).toMatchObject({
+      type: "hubProperty",
+      property: "firmwareVersion",
+      value: { raw: 0x1737151f, bcd: false },
+    });
+    expect(decodeHubProperty(b(0x04, 0x06, 0, 0, 0, 0x80))).toMatchObject({
+      property: "hardwareVersion",
+      value: { raw: -0x80000000, bcd: false },
     });
   });
 

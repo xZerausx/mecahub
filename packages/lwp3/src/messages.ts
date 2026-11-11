@@ -1,4 +1,4 @@
-import type { Version } from "./version.js";
+import type { DecodedVersion } from "./version.js";
 
 export type DecodeErrorReason =
   /** Buffer shorter than the declared length (or than a fixed field). */
@@ -21,8 +21,8 @@ export interface DecodeError {
 export type HubPropertyValue =
   | { readonly property: "advertisingName"; readonly value: string }
   | { readonly property: "button"; readonly value: boolean }
-  | { readonly property: "firmwareVersion"; readonly value: Version }
-  | { readonly property: "hardwareVersion"; readonly value: Version }
+  | { readonly property: "firmwareVersion"; readonly value: DecodedVersion }
+  | { readonly property: "hardwareVersion"; readonly value: DecodedVersion }
   | { readonly property: "rssi"; readonly value: number }
   | { readonly property: "batteryVoltage"; readonly value: number }
   | { readonly property: "primaryMacAddress"; readonly value: readonly number[] };
