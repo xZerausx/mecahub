@@ -71,6 +71,10 @@ export const ErrorCode = {
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
+/** End state of a timed/positioned motor command (doc 3.27, EndState). */
+export const EndState = { Float: 0, Hold: 126, Brake: 127 } as const;
+export type EndState = (typeof EndState)[keyof typeof EndState];
+
 /** I/O device type ids (doc 3.8.4; the doc says the list may not be current). */
 export const IoTypeId = {
   Motor: 0x0001,
