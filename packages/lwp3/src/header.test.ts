@@ -28,8 +28,10 @@ describe("length field", () => {
 });
 
 describe("encodeHeader / encodeFrame", () => {
-  // derivado del layout: doc 3.1 [length, hub id 0x00, type]; pylgbst (len = payload + 3,
-  // hub id 0) and node-poweredup (buffer[0] = length, buffer[1] = 0) agree. pybricksdev not checked.
+  // derivado del layout: doc 3.1 [length, hub id 0x00, type]. The 1-byte header layout is
+  // confirmed by pylgbst messages.py:21 (len = payload + 3), node-poweredup lpf2hub.ts:66-68
+  // (buffer[0] = length, buffer[1] = 0) and pybricksdev messages.py:71. The 2-byte length
+  // (128/129/130) is literal from doc 3.2 only, not covered by the refs. TODO(hw)
   it("builds [len, 0x00, type] for short messages", () => {
     expect(encodeHeader(0x01, 2)).toEqual(Uint8Array.of(0x05, 0x00, 0x01));
     expect(encodeFrame(0x01, Uint8Array.of(0x02, 0x02))).toEqual(
@@ -63,6 +65,14 @@ describe("decodeHeader", () => {
   it("decodes a two-byte length frame", () => {
     const payload = new Uint8Array(125).fill(7);
     expect(decodeHeader(encodeFrame(0x45, payload))).toEqual({ messageType: 0x45, payload });
+  });
+
+  // Non-canonical but accepted: `85 00` is a 2-byte length field whose value is 5.
+  it("accepts a non-canonical two-byte length", () => {
+    expect(decodeHeader(Uint8Array.of(0x85, 0x00, 0x00, 0x01, 0xaa))).toEqual({
+      messageType: 0x01,
+      payload: Uint8Array.of(0xaa),
+    });
   });
 
   it("ignores bytes beyond the declared length", () => {
