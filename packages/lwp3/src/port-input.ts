@@ -29,11 +29,9 @@ function read(type: number, payload: Uint8Array): Fields | DecodeError {
     const port = r.u8();
     const mode = r.u8();
     const deltaInterval = r.u32();
-    const at = r.offset;
-    const n = r.u8();
-    if (n > 1)
-      return { kind: "error", reason: "bad-field", messageType: type, offset: at } as const;
-    return { port, mode, deltaInterval, notify: n === 1 };
+    // The doc defines only 0/1; any non-zero byte counts as enabled (pylgbst, pybricksdev).
+    const notify = r.u8() !== 0;
+    return { port, mode, deltaInterval, notify };
   });
 }
 

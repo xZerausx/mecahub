@@ -93,18 +93,18 @@ describe("port input format setup (0x41)", () => {
     expect(encodePortInputFormatSetup({ ...ok, deltaInterval: 2 ** 32 - 1 })).toHaveLength(10);
   });
 
-  it("errors on short payloads and bad notify", () => {
+  it("errors on short payloads", () => {
     expect(decodePortInputFormatSetup(b(0, 2, 1, 0, 0, 0))).toMatchObject({
       kind: "error",
       reason: "payload-too-short",
       messageType: 0x41,
     });
-    expect(decodePortInputFormatSetup(b(0, 2, 1, 0, 0, 0, 2))).toMatchObject({
-      kind: "error",
-      reason: "bad-field",
-      messageType: 0x41,
-      offset: 6,
-    });
+  });
+
+  it("treats any non-zero notify byte as enabled", () => {
+    expect(decodePortInputFormatSetup(b(0, 2, 1, 0, 0, 0, 2))).toMatchObject({ notify: true });
+    expect(decodePortInputFormatSetup(b(0, 2, 1, 0, 0, 0, 0xff))).toMatchObject({ notify: true });
+    expect(decodePortInputFormatSetup(b(0, 2, 1, 0, 0, 0, 0))).toMatchObject({ notify: false });
   });
 });
 
@@ -126,17 +126,18 @@ describe("port input format (0x47)", () => {
     ).toThrow(RangeError);
   });
 
-  it("errors on short payloads, bad notify, and ignores trailing bytes", () => {
+  it("errors on short payloads and ignores trailing bytes", () => {
     expect(decodePortInputFormat(b())).toMatchObject({
       kind: "error",
       reason: "payload-too-short",
       messageType: 0x47,
     });
-    expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 9))).toMatchObject({
-      kind: "error",
-      reason: "bad-field",
-      messageType: 0x47,
-    });
     expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 1, 0xff))).toMatchObject({ notify: true });
+  });
+
+  it("treats any non-zero notify byte as enabled", () => {
+    expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 9))).toMatchObject({ notify: true });
+    expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 2))).toMatchObject({ notify: true });
+    expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 0))).toMatchObject({ notify: false });
   });
 });
