@@ -8,7 +8,14 @@ import { decodeVersion, encodeVersion } from "./version.js";
 describe("version", () => {
   // literal: doc 3.5.6 example 1.7.37.1510 (bytes 3..0 = 0x17 0x37 0x15 0x10)
   it("decodes the doc example 1.7.37.1510", () => {
-    expect(decodeVersion(0x17371510)).toEqual({ major: 1, minor: 7, bugfix: 37, build: 1510 });
+    expect(decodeVersion(0x17371510)).toEqual({
+      raw: 0x17371510,
+      bcd: true,
+      major: 1,
+      minor: 7,
+      bugfix: 37,
+      build: 1510,
+    });
   });
 
   // derivado del layout: doc 3.5.6 little-endian wire order; node-poweredup agrees
@@ -17,6 +24,8 @@ describe("version", () => {
     const wire = new Writer().i32(encodeVersion({ major: 1, minor: 7, bugfix: 37, build: 1510 }));
     expect(wire.toBytes()).toEqual(Uint8Array.of(0x10, 0x15, 0x37, 0x17));
     expect(decodeVersion(new Reader(wire.toBytes()).i32())).toEqual({
+      raw: 0x17371510,
+      bcd: true,
       major: 1,
       minor: 7,
       bugfix: 37,
@@ -27,17 +36,33 @@ describe("version", () => {
   it("uses 3 bits for major (max 7) and BCD maxima", () => {
     const max = { major: 7, minor: 9, bugfix: 99, build: 9999 };
     expect(encodeVersion(max)).toBe(0x79999999);
-    expect(decodeVersion(0x79999999)).toEqual(max);
+    expect(decodeVersion(0x79999999)).toEqual({ ...max, raw: 0x79999999, bcd: true });
   });
 
-  it("returns undefined for a negative value (bit 31 must be 0)", () => {
-    expect(decodeVersion(-1)).toBeUndefined();
+  // TODO(hw): the doc does not say what a hub sends for non-BCD digits; we keep the raw value
+  // instead of rejecting the whole property update.
+  it("keeps the raw value and flags bcd=false when bit 31 is set", () => {
+    expect(decodeVersion(-1)).toEqual({
+      raw: -1,
+      bcd: false,
+      major: 7,
+      minor: 15,
+      bugfix: 165,
+      build: 16665,
+    });
   });
 
-  it("returns undefined for non-BCD digits", () => {
-    expect(decodeVersion(0x1a371510)).toBeUndefined(); // minor 0xA
-    expect(decodeVersion(0x173a1510)).toBeUndefined(); // bugfix high nibble A
-    expect(decodeVersion(0x1737151f)).toBeUndefined(); // build low nibble F
+  // TODO(hw): non-BCD nibbles; fields are then the raw nibble values combined in base 10
+  it("is lenient with non-BCD digits: returns raw, bcd=false", () => {
+    expect(decodeVersion(0x1a371510)).toMatchObject({ raw: 0x1a371510, bcd: false, minor: 10 });
+    expect(decodeVersion(0x173a1510)).toMatchObject({ bcd: false, bugfix: 40 });
+    expect(decodeVersion(0x1737151f)).toMatchObject({
+      bcd: false,
+      major: 1,
+      minor: 7,
+      bugfix: 37,
+      build: 1525,
+    });
   });
 
   it.each([
