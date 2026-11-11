@@ -1,3 +1,5 @@
+import type { DecodeError } from "./messages.js";
+
 /** Thrown by Reader when a read goes past the end of the buffer. Internal to decoders. */
 export class ReaderRangeError extends RangeError {
   readonly offset: number;
@@ -5,6 +7,21 @@ export class ReaderRangeError extends RangeError {
     super(`read past end of buffer at offset ${offset}`);
     this.name = "ReaderRangeError";
     this.offset = offset;
+  }
+}
+
+/**
+ * Runs a decoder body; a Reader overrun becomes a `payload-too-short` DecodeError.
+ * `offset` is relative to the start of the payload.
+ */
+export function guardReads<T>(messageType: number, body: () => T): T | DecodeError {
+  try {
+    return body();
+  } catch (e) {
+    if (e instanceof ReaderRangeError) {
+      return { kind: "error", reason: "payload-too-short", messageType, offset: e.offset };
+    }
+    throw e;
   }
 }
 
