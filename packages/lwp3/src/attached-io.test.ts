@@ -150,4 +150,23 @@ describe("hub attached I/O", () => {
       port: 1,
     });
   });
+
+  it("ignores trailing bytes after attached and attachedVirtual", () => {
+    const attached = vectors[0]?.bytes.slice(3) as Uint8Array;
+    const virtual = vectors[3]?.bytes.slice(3) as Uint8Array;
+    expect(decodeHubAttachedIo(Uint8Array.of(...attached, 0xff, 0xee))).toEqual(vectors[0]?.msg);
+    expect(decodeHubAttachedIo(Uint8Array.of(...virtual, 0xff, 0xee))).toEqual(vectors[3]?.msg);
+  });
+
+  it("keeps raw revisions with bcd false when they are not BCD", () => {
+    // hw 0x1a371510 (minor nibble 10), sw 0x80000001 (bit 31 set), little-endian
+    const msg = roundTrip(
+      b(0x0f, 0x00, 0x04, 0x00, 0x01, 0x27, 0x00, 0x10, 0x15, 0x37, 0x1a, 0x01, 0, 0, 0x80),
+    );
+    expect(msg).toMatchObject({
+      event: "attached",
+      hardwareVersion: { raw: 0x1a371510, bcd: false },
+      softwareVersion: { raw: -0x7fffffff, bcd: false },
+    });
+  });
 });

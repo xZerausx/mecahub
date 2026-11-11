@@ -55,6 +55,15 @@ describe("port value (single, 0x45)", () => {
     expect(() => encodePortValueSingle(0, b())).toThrow(RangeError);
   });
 
+  it("readPortValue f32 decodes NaN", () => {
+    expect(readPortValue(b(0x00, 0x00, 0xc0, 0x7f), "f32")).toBeNaN();
+  });
+
+  it("encoder throws RangeError for a byte above 255", () => {
+    expect(() => encodePortValueSingle(0, [256] as unknown as Uint8Array)).toThrow(RangeError);
+    expect(() => encodePortValueSingle(0, [1, -1] as unknown as Uint8Array)).toThrow(RangeError);
+  });
+
   it("errors when the payload has no value byte", () => {
     for (const p of [b(), b(0x00)]) {
       expect(decodePortValueSingle(p)).toMatchObject({
@@ -73,6 +82,9 @@ describe("port value (single, 0x45)", () => {
     ["i32", b(0xe8, 0x03, 0x00, 0x00), 1000],
     ["i32", b(0x18, 0xfc, 0xff, 0xff), -1000],
     ["f32", b(0x00, 0x00, 0x20, 0x41), 10],
+    ["f32", b(0x00, 0x00, 0xc0, 0xbf), -1.5],
+    ["f32", b(0x00, 0x00, 0x20, 0xc1), -10],
+    ["f32", b(0x00, 0x00, 0xc0, 0x3f), 1.5],
   ] as const)("readPortValue %s", (kind, raw, expected) => {
     expect(readPortValue(raw, kind)).toBe(expected);
   });

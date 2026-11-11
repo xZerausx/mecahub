@@ -137,6 +137,7 @@ describe("decode", () => {
     const type = fc.constantFrom(
       MessageType.HubAttachedIo,
       MessageType.PortValueSingle,
+      MessageType.PortInputFormatSetupSingle,
       MessageType.PortInputFormatSingle,
     );
     const lead = fc.oneof(
