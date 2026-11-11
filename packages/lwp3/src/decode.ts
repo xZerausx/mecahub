@@ -5,6 +5,8 @@ import { decodeHeader } from "./header.js";
 import { decodeHubProperty } from "./hub-properties.js";
 import type { DecodeError, Lwp3Message } from "./messages.js";
 import { decodePortInputFormat, decodePortInputFormatSetup } from "./port-input.js";
+import { decodePortOutputCommand } from "./port-output.js";
+import { decodePortOutputFeedback } from "./port-output-feedback.js";
 import { decodePortValueSingle } from "./port-value.js";
 
 /**
@@ -25,6 +27,10 @@ export function decode(bytes: Uint8Array): Lwp3Message | DecodeError {
       return decodePortInputFormat(frame.payload);
     case MessageType.PortValueSingle:
       return decodePortValueSingle(frame.payload);
+    case MessageType.PortOutputCommand:
+      return decodePortOutputCommand(frame.payload);
+    case MessageType.PortOutputCommandFeedback:
+      return decodePortOutputFeedback(frame.payload);
     case MessageType.GenericError:
       return decodeGenericError(frame.payload);
     default:
