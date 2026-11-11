@@ -20,6 +20,7 @@ From planning:
 Found in code (`rg "TODO\(hw\)" packages`):
 
 - Two-byte length field (messages over 127 bytes): literal from doc 3.2 only; the reference libraries do not cover it (pylgbst and node-poweredup emit one byte).
+- Write queue per-send timeout (default 1000 ms in `createWriteQueue`): tune on a real hub against the STOP < 200 ms budget.
 - Notification framing: `splitFrames` splits one notification into several frames by length and does not buffer across notifications. TODO(hw): whether the Move Hub ever fragments one message across notifications (node-poweredup assumes not).
 - Version values with non-BCD digits or bit 31 set: decode is lenient (`bcd: false`, raw Int32 kept); real hub behaviour untested.
 - Advertising name longer than 14 bytes: decode tolerates it. Real hubs untested.
