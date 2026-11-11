@@ -27,5 +27,5 @@ Resolved by cross-checking (no longer TODO(hw)):
 
 - Enable Updates on Battery Voltage is allowed by doc 3.5.1; also pybricksdev messages.py:173-219 (`_HUB_PROPERTY_OPS_MAP`, battery entry at 196-201) and node-poweredup lpf2hub.ts:189.
 - Primary MAC address is in wire order, not reversed: doc 3.5.5 note G, pylgbst hub.py:289, node-poweredup utils.ts:32-34, pybricksdev bytecodes.py:134-135.
-- Generic error layout: doc 3.9 (codes in 3.9.2), pylgbst messages.py:370-371, pybricksdev messages.py:582-595.
+- Generic error layout: doc 3.9 (codes in 3.9.2), pylgbst messages.py:370-371, pybricksdev messages.py:573-604.
 - pybricksdev was cross-checked for hub properties, generic error and the header (messages.py:71).
