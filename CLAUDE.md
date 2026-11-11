@@ -11,7 +11,7 @@ Strict TypeScript, pnpm workspaces, Vite, React, Blockly, Vitest, Playwright, Ca
 
 - packages/lwp3, hub and runtime: no browser APIs and no React. Must run in Node.
 - All Bluetooth access goes through the BleTransport interface. Never use navigator.bluetooth directly outside transport/web.
-- Every new LWP3 message: test with bytes from https://lego.github.io/lego-ble-wireless-protocol-docs/
+- Cada mensaje LWP3 nuevo lleva tests. Origen del vector en comentario: 'literal' (copiado de la doc), 'derivado del layout' (armado desde la sección X.Y y cruzado con pylgbst/node-poweredup/pybricksdev) o 'capturado' (hub real, en fixtures/). Los capturados mandan: si contradicen a un derivado, se corrige el derivado.
 - STOP must halt all motors in < 200 ms, always. Mandatory test.
 - No telemetry, no accounts, no network requests except loading the PWA.
 - UI strings only via i18n (content/i18n). No hardcoded strings.

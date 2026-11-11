@@ -33,6 +33,7 @@ export const HubPropertyId = {
   FirmwareVersion: 0x03,
   HardwareVersion: 0x04,
   Rssi: 0x05,
+  /** Doc name; the value is a percentage 0..100 (decoded as `batteryPercent`). */
   BatteryVoltage: 0x06,
   BatteryType: 0x07,
   ManufacturerName: 0x08,
