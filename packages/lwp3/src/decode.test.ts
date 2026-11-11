@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { ErrorCode, HubPropertyId, HubPropertyOperation, MessageType } from "./constants.js";
 import { decode } from "./decode.js";
+import { encodeFrame } from "./header.js";
 
 const b = (...bytes: number[]) => Uint8Array.of(...bytes);
 
@@ -75,6 +77,41 @@ describe("decode", () => {
         const out = decode(Uint8Array.of(p.length + 3, 0, t, ...p));
         return "kind" in out ? out.kind === "error" : typeof out.type === "string";
       }),
+      { seed: 0x6d6563, numRuns: 1000 },
+    );
+  });
+
+  const decodesSafely = (frame: Uint8Array) => {
+    const out = decode(frame);
+    return "kind" in out ? out.kind === "error" : typeof out.type === "string";
+  };
+  const values = <T extends Record<string, number>>(o: T): number[] => Object.values(o);
+
+  it("never throws for hub property / generic error frames biased to valid ids (fixed seed)", () => {
+    const type = fc.constantFrom(MessageType.HubProperties, MessageType.GenericError);
+    const first = fc.oneof(
+      fc.constantFrom(...values(HubPropertyId)),
+      fc.constantFrom(...values(MessageType)),
+    );
+    const second = fc.oneof(
+      fc.constantFrom(...values(HubPropertyOperation)),
+      fc.constantFrom(...values(ErrorCode)),
+    );
+    fc.assert(
+      fc.property(type, first, second, fc.uint8Array({ maxLength: 20 }), (t, a, c, rest) =>
+        decodesSafely(encodeFrame(t, Uint8Array.of(a, c, ...rest))),
+      ),
+      { seed: 0x6d6563, numRuns: 1000 },
+    );
+  });
+
+  it("never throws for two-byte length frames built with encodeFrame (fixed seed)", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 0xff }),
+        fc.uint8Array({ minLength: 125, maxLength: 250 }),
+        (t, p) => decodesSafely(encodeFrame(t, p)),
+      ),
       { seed: 0x6d6563, numRuns: 1000 },
     );
   });
