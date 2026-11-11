@@ -181,6 +181,23 @@ export interface PortOutputCommandMessage {
   readonly command: PortOutputCommand;
 }
 
+/** One port's status in Port Output Command Feedback (doc 3.32). `flags` is the raw byte. */
+export interface PortFeedback {
+  readonly port: number;
+  readonly flags: number;
+  readonly bufferEmptyInProgress: boolean;
+  readonly bufferEmptyCompleted: boolean;
+  readonly discarded: boolean;
+  readonly idle: boolean;
+  readonly busyFull: boolean;
+}
+
+/** Port Output Command Feedback (doc 3.32), upstream: one (port, flags) pair per port. */
+export interface PortOutputFeedbackMessage {
+  readonly type: "portOutputFeedback";
+  readonly ports: readonly PortFeedback[];
+}
+
 export interface GenericErrorMessage {
   readonly type: "genericError";
   /** Message type of the command that triggered the response. */
@@ -201,5 +218,6 @@ export type Lwp3Message =
   | PortInputFormatMessage
   | PortValueMessage
   | PortOutputCommandMessage
+  | PortOutputFeedbackMessage
   | GenericErrorMessage
   | UnknownMessage;
