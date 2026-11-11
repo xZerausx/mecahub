@@ -26,7 +26,7 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
     name: "enable battery updates",
     origin:
       "derivado del layout: doc 3.5; node-poweredup subscribes with 0x02. Doc table may not list it for battery: TODO(hw)",
-    msg: { type: "hubProperty", operation: "enableUpdates", property: "batteryVoltage" },
+    msg: { type: "hubProperty", operation: "enableUpdates", property: "batteryPercent" },
     bytes: b(0x05, 0x00, 0x01, 0x06, 0x02),
   },
   {
@@ -95,7 +95,7 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
   {
     name: "update battery 85 %",
     origin: "derivado del layout: doc 3.5 (UInt8 0..100); pylgbst reads first parameter byte",
-    msg: { type: "hubProperty", operation: "update", property: "batteryVoltage", value: 85 },
+    msg: { type: "hubProperty", operation: "update", property: "batteryPercent", value: 85 },
     bytes: b(0x06, 0x00, 0x01, 0x06, 0x06, 0x55),
   },
   {
@@ -135,7 +135,7 @@ describe("hub properties", () => {
     expect(() => encodeHubProperty(set("a".repeat(15)))).toThrow(RangeError);
     expect(() => encodeHubProperty(set("ñ"))).toThrow(RangeError);
     expect(encodeHubProperty(set("a".repeat(14)))).toHaveLength(5 + 14);
-    const upd = (property: "rssi" | "batteryVoltage", value: number): HubPropertyMessage => ({
+    const upd = (property: "rssi" | "batteryPercent", value: number): HubPropertyMessage => ({
       type: "hubProperty",
       operation: "update",
       property,
@@ -143,7 +143,7 @@ describe("hub properties", () => {
     });
     expect(() => encodeHubProperty(upd("rssi", 1))).toThrow(RangeError);
     expect(() => encodeHubProperty(upd("rssi", -128))).toThrow(RangeError);
-    expect(() => encodeHubProperty(upd("batteryVoltage", 101))).toThrow(RangeError);
+    expect(() => encodeHubProperty(upd("batteryPercent", 101))).toThrow(RangeError);
     expect(() =>
       encodeHubProperty({
         type: "hubProperty",

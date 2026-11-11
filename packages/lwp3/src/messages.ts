@@ -24,7 +24,8 @@ export type HubPropertyValue =
   | { readonly property: "firmwareVersion"; readonly value: DecodedVersion }
   | { readonly property: "hardwareVersion"; readonly value: DecodedVersion }
   | { readonly property: "rssi"; readonly value: number }
-  | { readonly property: "batteryVoltage"; readonly value: number }
+  /** Battery level in percent, 0..100 (wire property "Battery Voltage", 0x06, doc 3.5). */
+  | { readonly property: "batteryPercent"; readonly value: number }
   | { readonly property: "primaryMacAddress"; readonly value: readonly number[] };
 
 export type HubPropertyName = HubPropertyValue["property"];

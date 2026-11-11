@@ -19,7 +19,9 @@ const idOf: Record<HubPropertyName, number> = {
   firmwareVersion: HubPropertyId.FirmwareVersion,
   hardwareVersion: HubPropertyId.HardwareVersion,
   rssi: HubPropertyId.Rssi,
-  batteryVoltage: HubPropertyId.BatteryVoltage,
+  // The doc names property 0x06 "Battery Voltage" but the value is a percentage (UInt8 0..100,
+  // doc 3.5; pylgbst VOLTAGE_PERC messages.py:105). The protocol constant keeps the doc name.
+  batteryPercent: HubPropertyId.BatteryVoltage,
   primaryMacAddress: HubPropertyId.PrimaryMacAddress,
 };
 const nameOf = new Map(Object.entries(idOf).map(([n, id]) => [id, n as HubPropertyName]));
@@ -59,7 +61,7 @@ function writeValue(w: Writer, v: HubPropertyValue): void {
       if (v.value < -127 || v.value > 0) throw new RangeError("rssi must be -127..0");
       w.i8(v.value);
       return;
-    case "batteryVoltage":
+    case "batteryPercent":
       if (v.value > 100) throw new RangeError("battery must be 0..100");
       w.u8(v.value);
       return;
@@ -109,7 +111,7 @@ function readValue(r: Reader, property: HubPropertyName): HubPropertyValue | Dec
       const v = r.i8();
       return v > 0 || v < -127 ? bad(at) : { property, value: v };
     }
-    case "batteryVoltage": {
+    case "batteryPercent": {
       const v = r.u8();
       return v > 100 ? bad(at) : { property, value: v };
     }
