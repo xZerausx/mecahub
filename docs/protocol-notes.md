@@ -19,8 +19,13 @@ From planning:
 
 Found in code (`rg "TODO\(hw\)" packages`):
 
-- Hub property operation/property combinations: the doc table lists which operations each property supports, but node-poweredup enables updates on Battery Voltage. The encoder does not enforce the table.
-- Primary MAC address byte order: the doc (3.5.5 note G) says big-endian; no other source confirmed it.
-- Two-byte length field (messages over 127 bytes): checked against the doc only; pylgbst and node-poweredup emit one byte.
-- Advertising name longer than 14 bytes or version fields with non-BCD digits: decode tolerates the first, rejects the second. Real hubs untested.
-- pybricksdev was not cross-checked for any vector in the first LWP3 PR.
+- Two-byte length field (messages over 127 bytes): literal from doc 3.2 only; the reference libraries do not cover it (pylgbst and node-poweredup emit one byte).
+- Version values with non-BCD digits or bit 31 set: decode is lenient (`bcd: false`, raw Int32 kept); real hub behaviour untested.
+- Advertising name longer than 14 bytes: decode tolerates it. Real hubs untested.
+
+Resolved by cross-checking (no longer TODO(hw)):
+
+- Enable Updates on Battery Voltage is allowed by doc 3.5.1; also pybricksdev messages.py:173-219 (`_HUB_PROPERTY_OPS_MAP`, battery entry at 196-201) and node-poweredup lpf2hub.ts:189.
+- Primary MAC address is in wire order, not reversed: doc 3.5.5 note G, pylgbst hub.py:289, node-poweredup utils.ts:32-34, pybricksdev bytecodes.py:134-135.
+- Generic error layout: doc 3.9 (codes in 3.9.2), pylgbst messages.py:370-371, pybricksdev messages.py:582-595.
+- pybricksdev was cross-checked for hub properties, generic error and the header (messages.py:71).

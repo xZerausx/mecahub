@@ -18,10 +18,10 @@ Captured vectors win. If one contradicts a derived vector, the derived vector is
 
 Parsing rules:
 
-- Multibyte fields are little-endian by default. The only exception is the MAC address, which the docs (3.5.5 note G) say is big-endian.
+- Multibyte fields are little-endian by default. The only exception is the MAC address, which the docs (3.5.5 note G) say is big-endian (not reversed); pylgbst hub.py:289, node-poweredup utils.ts:32-34 and pybricksdev bytecodes.py:134-135 agree.
 - Length tolerance: bytes beyond the declared length are ignored; a declared length longer than the buffer is a `truncated` error; a payload shorter than the message minimum is an error. `decode` never throws; encoders throw `RangeError` on invalid input.
 
-Robustness: a property test with fast-check checks that `decode` never throws on arbitrary bytes. It uses a fixed seed so CI is deterministic.
+Robustness: property tests with fast-check check that `decode` never throws on arbitrary bytes, on frames biased to valid ids and on two-byte length frames. They use a fixed seed so CI is deterministic.
 
 ## Consequences
 

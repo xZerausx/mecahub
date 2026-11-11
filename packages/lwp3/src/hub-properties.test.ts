@@ -13,8 +13,8 @@ function roundTrip(frame: Uint8Array) {
 
 // Layout (doc 3.5): [len, hub 0x00, 0x01, property, operation, payload...].
 // Operation bytes and property ids agree between the doc, pylgbst (MsgHubProperties: type 0x01,
-// enable 0x02, request 0x05, update 0x06) and node-poweredup ([0x01, prop, 0x05|0x02] + len/hub).
-// pybricksdev not checked. Operation/property combinations the doc does not list: TODO(hw).
+// enable 0x02, request 0x05, update 0x06), node-poweredup ([0x01, prop, 0x05|0x02] + len/hub,
+// lpf2hub.ts:189) and pybricksdev (messages.py:173-219, the property/operation table).
 const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: Uint8Array }[] = [
   {
     name: "request button",
@@ -25,7 +25,7 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
   {
     name: "enable battery updates",
     origin:
-      "derivado del layout: doc 3.5; node-poweredup subscribes with 0x02. Doc table may not list it for battery: TODO(hw)",
+      "derivado del layout: doc 3.5.1 allows Enable Updates on Battery Voltage; node-poweredup lpf2hub.ts:189 and pybricksdev messages.py:196-201 agree",
     msg: { type: "hubProperty", operation: "enableUpdates", property: "batteryPercent" },
     bytes: b(0x05, 0x00, 0x01, 0x06, 0x02),
   },
@@ -100,9 +100,10 @@ const vectors: { name: string; origin: string; msg: HubPropertyMessage; bytes: U
   },
   {
     // The doc (3.5.5 note G) says the MAC address is big-endian: bytes are in display order,
-    // 00:16:53:AA:BB:CC is NOT reversed. node-poweredup/pylgbst parsing of MAC unconfirmed: TODO(hw)
+    // 00:16:53:AA:BB:CC is NOT reversed. Confirmed by pylgbst hub.py:289 (payload shown as is),
+    // node-poweredup utils.ts:32-34 and pybricksdev bytecodes.py:134-135 (both print in wire order).
     name: "update primary MAC (big-endian)",
-    origin: "derivado del layout: doc 3.5.5 note G",
+    origin: "derivado del layout: doc 3.5.5 note G; pylgbst, node-poweredup and pybricksdev agree",
     msg: {
       type: "hubProperty",
       operation: "update",
