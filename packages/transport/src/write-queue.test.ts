@@ -202,6 +202,81 @@ describe("createWriteQueue copy and timeout", () => {
     await p2;
   });
 
+  it("calls onTimeout once when a send times out, before the next pending write is sent", async () => {
+    vi.useFakeTimers();
+    const { sent, send } = controllableSend();
+    const sentAtTimeout: number[] = [];
+    const onTimeout = vi.fn(() => void sentAtTimeout.push(sent.length));
+    const q = createWriteQueue(send, { timeoutMs: 100, onTimeout });
+    const p1 = settled(q.enqueue(b(1)));
+    void q.enqueue(b(2)).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(100);
+    await p1;
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(sentAtTimeout).toEqual([1]);
+  });
+
+  it("STOP: a hung in-flight write is declared dead within 150 ms of an urgent write", async () => {
+    vi.useFakeTimers();
+    const { send } = controllableSend();
+    const onTimeout = vi.fn();
+    const q = createWriteQueue(send, { onTimeout });
+    const hung = settled(q.enqueue(b(1)));
+    const stop = settled(q.enqueue(b(0xff), "urgent"));
+    await vi.advanceTimersByTimeAsync(149);
+    expect(onTimeout).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(await hung).toMatchObject({ code: "gatt", message: "write timed out" });
+    void stop;
+  });
+
+  it("STOP: the deadline counts from the urgent enqueue and never extends the normal timeout", async () => {
+    vi.useFakeTimers();
+    const { send } = controllableSend();
+    const onTimeout = vi.fn();
+    const q = createWriteQueue(send, { timeoutMs: 100, onTimeout });
+    void settled(q.enqueue(b(1)));
+    await vi.advanceTimersByTimeAsync(50);
+    void settled(q.enqueue(b(0xff), "urgent"));
+    await vi.advanceTimersByTimeAsync(49);
+    expect(onTimeout).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it("STOP: urgentDeadlineMs is configurable, and an urgent write on an idle queue arms nothing", async () => {
+    vi.useFakeTimers();
+    const { sent, send } = controllableSend();
+    const onTimeout = vi.fn();
+    const q = createWriteQueue(send, { urgentDeadlineMs: 40, onTimeout });
+    void settled(q.enqueue(b(1)));
+    void settled(q.enqueue(b(0xff), "urgent"));
+    await vi.advanceTimersByTimeAsync(40);
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(sent).toHaveLength(2); // the urgent one went out right after the dead write
+    sent[1]?.resolve();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it("STOP: an in-flight write that settles in time is not timed out by the urgent deadline", async () => {
+    vi.useFakeTimers();
+    const { sent, send } = controllableSend();
+    const onTimeout = vi.fn();
+    const q = createWriteQueue(send, { onTimeout });
+    const first = q.enqueue(b(1));
+    const stop = q.enqueue(b(0xff), "urgent");
+    await vi.advanceTimersByTimeAsync(100);
+    sent[0]?.resolve();
+    await first;
+    await vi.advanceTimersByTimeAsync(0);
+    sent[1]?.resolve();
+    await stop;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onTimeout).not.toHaveBeenCalled();
+  });
+
   it("ignores a late settle of a timed-out send", async () => {
     vi.useFakeTimers();
     const { sent, send } = controllableSend();

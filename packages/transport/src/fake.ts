@@ -5,6 +5,7 @@ import {
   type TransportState,
   type WritePriority,
 } from "./transport.js";
+import { surface } from "./surface.js";
 import { createWriteQueue, type WriteQueue } from "./write-queue.js";
 
 export interface FakeTransportOptions {
@@ -18,16 +19,6 @@ export interface FakeTransportOptions {
 
 function asGatt(err: unknown, message: string): TransportError {
   return err instanceof TransportError ? err : new TransportError("gatt", message, { cause: err });
-}
-
-/**
- * A throwing listener must not stop the others, but must not vanish either: the error is
- * rethrown in a microtask so it shows up as an uncaught error in the test run.
- */
-function surface(err: unknown): void {
-  queueMicrotask(() => {
-    throw err;
-  });
 }
 
 /** In-memory BleTransport for hub, runtime and simulator tests. Goes through the real write queue. */

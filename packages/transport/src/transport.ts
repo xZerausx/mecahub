@@ -15,6 +15,8 @@ export const TransportErrorCode = {
   NoDevice: "no-device",
   Cancelled: "cancelled",
   Gatt: "gatt",
+  /** The environment has no usable Bluetooth (e.g. a browser without Web Bluetooth). */
+  Unsupported: "unsupported",
 } as const;
 export type TransportErrorCode = (typeof TransportErrorCode)[keyof typeof TransportErrorCode];
 
@@ -32,6 +34,9 @@ export class TransportError extends Error {
  * - idle -> selected: `requestDevice` resolves.
  * - selected | disconnected -> connecting -> connected: `connect`; connect from idle rejects
  *   "no-device"; a connect that finds the state changed meanwhile rejects "cancelled".
+ * - `connect` while connecting joins the attempt in flight (same outcome, no second link); a failed
+ *   connect rejects "gatt" and leaves the state "disconnected". `disconnect()` from idle or
+ *   selected is a no-op that fires no event.
  * - connecting | connected -> disconnected: `disconnect()` or a link loss; listeners fire once.
  * - disconnected -> selected: `requestDevice` again (or `connect` straight away to reuse the device).
  * - `requestDevice` while connecting or connected rejects "gatt".
