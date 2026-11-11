@@ -9,8 +9,9 @@ import type {
 
 type Fields = Omit<PortInputFormatMessage, "type">;
 
-const write = (type: number, m: Fields): Uint8Array =>
-  encodeFrame(
+function write(type: number, m: Fields): Uint8Array {
+  if (typeof m.notify !== "boolean") throw new RangeError(`notify must be a boolean: ${m.notify}`);
+  return encodeFrame(
     type,
     new Writer()
       .u8(m.port)
@@ -19,6 +20,7 @@ const write = (type: number, m: Fields): Uint8Array =>
       .u8(m.notify ? 1 : 0)
       .toBytes(),
   );
+}
 
 // TODO(hw): the doc does not state endianness for the delta interval; little-endian assumed
 // (pylgbst, pybricksdev and node-poweredup all write it LE).

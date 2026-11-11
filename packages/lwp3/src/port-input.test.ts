@@ -140,4 +140,18 @@ describe("port input format (0x47)", () => {
     expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 2))).toMatchObject({ notify: true });
     expect(decodePortInputFormat(b(0, 2, 1, 0, 0, 0, 0))).toMatchObject({ notify: false });
   });
+
+  it("encoder throws RangeError when notify is not a boolean", () => {
+    const m = { type: "portInputFormat", port: 0, mode: 0, deltaInterval: 1 } as const;
+    expect(() => encodePortInputFormat({ ...m, notify: 2 as unknown as boolean })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      encodePortInputFormatSetup({
+        ...m,
+        type: "portInputFormatSetup",
+        notify: 1 as unknown as boolean,
+      }),
+    ).toThrow(RangeError);
+  });
 });
