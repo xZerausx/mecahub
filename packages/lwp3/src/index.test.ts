@@ -21,6 +21,7 @@ describe("@mecahub/lwp3", () => {
         "encodePortInputFormatSetup",
         "encodePortValueSingle",
         "readPortValue",
+        "splitFrames",
         "decodeVersion",
         "encodeFrame",
         "encodeHubProperty",

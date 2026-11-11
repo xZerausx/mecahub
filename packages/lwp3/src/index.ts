@@ -10,6 +10,7 @@ export {
 export { encodeHubAttachedIo } from "./attached-io.js";
 export { decode } from "./decode.js";
 export { encodeFrame } from "./header.js";
+export { splitFrames } from "./split.js";
 export { encodeHubProperty } from "./hub-properties.js";
 export { encodePortInputFormat, encodePortInputFormatSetup } from "./port-input.js";
 export { encodePortValueSingle, readPortValue } from "./port-value.js";
