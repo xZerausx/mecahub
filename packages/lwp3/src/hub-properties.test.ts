@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeHeader } from "./header.js";
 import { decodeHubProperty, encodeHubProperty } from "./hub-properties.js";
 import type { HubPropertyMessage } from "./messages.js";
+import type { Version } from "./version.js";
 
 const b = (...bytes: number[]) => Uint8Array.of(...bytes);
 
@@ -152,6 +153,21 @@ describe("hub properties", () => {
         property: "primaryMacAddress",
         value: [1, 2, 3],
       }),
+    ).toThrow(RangeError);
+  });
+
+  it("encodes version updates from plain {major, minor, bugfix, build} (no raw/bcd needed)", () => {
+    const plain: HubPropertyMessage<Version> = {
+      type: "hubProperty",
+      operation: "update",
+      property: "firmwareVersion",
+      value: { major: 1, minor: 7, bugfix: 37, build: 1510 },
+    };
+    expect(encodeHubProperty(plain)).toEqual(
+      b(0x09, 0x00, 0x01, 0x03, 0x06, 0x10, 0x15, 0x37, 0x17),
+    );
+    expect(() =>
+      encodeHubProperty({ ...plain, value: { major: 1, minor: 10, bugfix: 0, build: 0 } }),
     ).toThrow(RangeError);
   });
 

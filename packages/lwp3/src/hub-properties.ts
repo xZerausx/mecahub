@@ -9,6 +9,7 @@ import type {
   UnknownMessage,
 } from "./messages.js";
 import { decodeVersion, encodeVersion } from "./version.js";
+import type { Version } from "./version.js";
 
 const MAX_NAME = 14;
 const T = MessageType.HubProperties;
@@ -40,7 +41,7 @@ const opName = new Map<number, keyof typeof opOf>(
 
 const isAscii = (bytes: ArrayLike<number>) => Array.from(bytes).every((c) => c <= 0x7f);
 
-function writeValue(w: Writer, v: HubPropertyValue): void {
+function writeValue(w: Writer, v: HubPropertyValue<Version>): void {
   switch (v.property) {
     case "advertisingName": {
       const codes = Array.from(v.value, (c) => c.charCodeAt(0));
@@ -73,7 +74,7 @@ function writeValue(w: Writer, v: HubPropertyValue): void {
 }
 
 /** Encodes a full hub property frame (downstream ops, or Update for simulators). */
-export function encodeHubProperty(msg: HubPropertyMessage): Uint8Array {
+export function encodeHubProperty(msg: HubPropertyMessage<Version>): Uint8Array {
   const w = new Writer().u8(idOf[msg.property]).u8(opOf[msg.operation]);
   if (msg.operation === "update" || msg.operation === "set") writeValue(w, msg);
   return encodeFrame(T, w.toBytes());
