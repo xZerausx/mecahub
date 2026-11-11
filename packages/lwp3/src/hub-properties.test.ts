@@ -217,6 +217,15 @@ describe("hub properties", () => {
     });
   });
 
+  // pybricksdev messages.py:283 strips trailing NULs from string properties
+  it("trims trailing 0x00 bytes from the advertising name on decode", () => {
+    expect(decodeHubProperty(b(0x01, 0x06, 0x48, 0x69, 0x00, 0x00))).toMatchObject({
+      property: "advertisingName",
+      value: "Hi",
+    });
+    expect(decodeHubProperty(b(0x01, 0x06, 0x00, 0x48, 0x00))).toMatchObject({ value: "\0H" });
+  });
+
   it("ignores trailing bytes after fixed-size values", () => {
     expect(decodeHubProperty(b(0x02, 0x06, 0x01, 0xff))).toMatchObject({ value: true });
   });

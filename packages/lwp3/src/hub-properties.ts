@@ -88,8 +88,12 @@ function readValue(r: Reader, property: HubPropertyName): HubPropertyValue | Dec
   const at = r.offset;
   switch (property) {
     case "advertisingName": {
-      const raw = r.rest();
-      if (raw.length < 1) throw new ReaderRangeError(at);
+      const all = r.rest();
+      if (all.length < 1) throw new ReaderRangeError(at);
+      // pybricksdev messages.py:283 strips trailing NULs; so do we.
+      let end = all.length;
+      while (end > 0 && all[end - 1] === 0) end--;
+      const raw = all.subarray(0, end);
       return isAscii(raw) ? { property, value: String.fromCharCode(...raw) } : bad(at);
     }
     case "button": {
