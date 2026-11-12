@@ -5,6 +5,7 @@ import {
   type TransportState,
   type WritePriority,
 } from "./transport.js";
+import { surface } from "./surface.js";
 import { createWriteQueue, type WriteQueue } from "./write-queue.js";
 
 export interface FakeTransportOptions {
@@ -12,16 +13,12 @@ export interface FakeTransportOptions {
   device?: BleDeviceInfo;
   /** Controls write latency or failures. A write is recorded in `writes` once this resolves. */
   send?: (bytes: Uint8Array) => Promise<void>;
+  /** Controls connect latency or failures; awaited while "connecting". */
+  connect?: () => Promise<void>;
 }
 
-/**
- * A throwing listener must not stop the others, but must not vanish either: the error is
- * rethrown in a microtask so it shows up as an uncaught error in the test run.
- */
-function surface(err: unknown): void {
-  queueMicrotask(() => {
-    throw err;
-  });
+function asGatt(err: unknown, message: string): TransportError {
+  return err instanceof TransportError ? err : new TransportError("gatt", message, { cause: err });
 }
 
 /** In-memory BleTransport for hub, runtime and simulator tests. Goes through the real write queue. */
@@ -31,15 +28,29 @@ export class FakeTransport implements BleTransport {
 
   private current: TransportState = "idle";
   private readonly device: BleDeviceInfo;
-  private readonly queue: WriteQueue;
+  private readonly connectHook: () => Promise<void>;
+  private connecting: Promise<void> | undefined;
+  /** One queue per link, like the web adapter: a dead link's in-flight write cannot block a new one. */
+  private queue: WriteQueue | undefined;
+  private readonly sendHook: (bytes: Uint8Array) => Promise<void>;
+  /** Identifies the current connection attempt; bumped when the link ends. A stale attempt is ignored. */
+  private attempt = 0;
   private readonly notifyListeners = new Set<(bytes: Uint8Array) => void>();
   private readonly disconnectListeners = new Set<() => void>();
 
   constructor(options: FakeTransportOptions = {}) {
     this.device = options.device ?? { id: "fake", name: "Fake Hub" };
-    const hook = options.send ?? (() => Promise.resolve());
-    this.queue = createWriteQueue(async (bytes) => {
-      await hook(bytes);
+    this.sendHook = options.send ?? (() => Promise.resolve());
+    this.connectHook = options.connect ?? (() => Promise.resolve());
+  }
+
+  private newQueue(): WriteQueue {
+    return createWriteQueue(async (bytes) => {
+      try {
+        await this.sendHook(bytes);
+      } catch (err) {
+        throw asGatt(err, "write failed");
+      }
       this.writes.push(bytes);
     });
   }
@@ -58,18 +69,41 @@ export class FakeTransport implements BleTransport {
     return Promise.resolve(this.device);
   }
 
-  async connect(): Promise<void> {
-    if (this.current === "connected") return;
-    if (this.current === "idle") throw new TransportError("no-device", "requestDevice first");
+  connect(): Promise<void> {
+    if (this.current === "connected") return Promise.resolve();
+    if (this.current === "connecting" && this.connecting) return this.connecting;
+    if (this.current === "idle") {
+      return Promise.reject(new TransportError("no-device", "requestDevice first"));
+    }
     this.current = "connecting";
-    await Promise.resolve();
-    // The link may have dropped (or disconnect() been called) while connecting.
-    if (this.current !== "connecting") throw new TransportError("cancelled", "connect interrupted");
+    this.queue = this.newQueue();
+    const attempt = this.run(++this.attempt);
+    this.connecting = attempt;
+    const clear = (): void => {
+      if (this.connecting === attempt) this.connecting = undefined;
+    };
+    attempt.then(clear, clear);
+    return attempt;
+  }
+
+  private async run(id: number): Promise<void> {
+    // The link may have dropped (or disconnect() been called) meanwhile: a stale attempt only
+    // reports "cancelled" and never touches the state of a newer one.
+    const stale = (): boolean => this.attempt !== id || this.current !== "connecting";
+    try {
+      await this.connectHook();
+    } catch (err) {
+      if (stale()) throw new TransportError("cancelled", "connect interrupted");
+      this.current = "disconnected";
+      this.queue = undefined;
+      throw asGatt(err, "connect failed");
+    }
+    if (stale()) throw new TransportError("cancelled", "connect interrupted");
     this.current = "connected";
   }
 
   write(bytes: Uint8Array, options?: { priority?: WritePriority }): Promise<void> {
-    if (this.current !== "connected") {
+    if (this.current !== "connected" || !this.queue) {
       return Promise.reject(new TransportError("not-connected"));
     }
     return this.queue.enqueue(bytes, options?.priority);
@@ -105,7 +139,9 @@ export class FakeTransport implements BleTransport {
   emitDisconnect(): void {
     if (this.current !== "connected" && this.current !== "connecting") return;
     this.current = "disconnected";
-    this.queue.clear(new TransportError("not-connected", "disconnected"));
+    this.attempt++;
+    this.queue?.clear(new TransportError("not-connected", "disconnected"));
+    this.queue = undefined;
     for (const listener of [...this.disconnectListeners]) {
       try {
         listener();
