@@ -35,6 +35,15 @@ pnpm lint       # run ESLint
 pnpm typecheck  # run TypeScript checks
 ```
 
+## Testing with a real hub
+
+There is a dev-only page (not part of the production build) that connects to the Move Hub and shows its name and battery.
+
+1. Run `pnpm dev` and open <http://localhost:5173/dev/connect.html> in Chrome or Edge.
+2. On Linux, enable `chrome://flags/#enable-experimental-web-platform-features` and restart Chrome. You also need BlueZ 5.41 or newer (`bluetoothctl --version`). Chromium installed as a snap reportedly cannot use Web Bluetooth: use the .deb or Flatpak build instead.
+3. Press the hub's green button so it advertises, press **Connect** and pick it in the list.
+4. Press **Copy log** and paste the result into an issue, or save it as `packages/lwp3/fixtures/<yyyy-mm-dd>-<what>.txt` (format in that folder's README). These become the first `capturado` vectors.
+
 ## Repository layout
 
 ```
