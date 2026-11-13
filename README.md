@@ -44,6 +44,14 @@ There is a dev-only page (not part of the production build) that connects to the
 3. Press the hub's green button so it advertises, press **Connect** and pick it in the list.
 4. Press **Copy log** and paste the result into an issue, or save it as `packages/lwp3/fixtures/<yyyy-mm-dd>-<what>.txt` (format in that folder's README). These become the first `capturado` vectors.
 
+## Simulator
+
+A dev-only page with a simulated Move Hub (battery, button, tilt, color and distance sensors, motors with live readouts, link faults) and an app connected to it, so you can try the app and the STOP path without hardware. It also shows how long STOP takes to halt the motors.
+
+Run `pnpm sim` (starts the web dev server and opens <http://localhost:5173/dev/simulator.html>). Like the connect page, it is not part of the production build.
+
+Behaviours marked `supuesto` in the code (sensor value layouts, motor timing, what the hub does when the link dies) are our own assumptions and have not been verified on real hardware: see [docs/protocol-notes.md](docs/protocol-notes.md).
+
 ## Repository layout
 
 ```

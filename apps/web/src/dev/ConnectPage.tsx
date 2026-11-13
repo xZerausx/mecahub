@@ -18,7 +18,7 @@ export function ConnectPage({ probe, t, copy }: ConnectPageProps) {
     <main className="connect">
       <h1>{t("dev.connect.title")}</h1>
       {probe ? (
-        <ProbePanel probe={probe} t={t} copy={copy} />
+        <ProbePanel probe={probe} t={t} copy={copy} intro="dev.connect.intro" />
       ) : (
         <>
           <p role="alert">{t("dev.connect.unsupported")}</p>
@@ -29,7 +29,13 @@ export function ConnectPage({ probe, t, copy }: ConnectPageProps) {
   );
 }
 
-function ProbePanel({ probe, t, copy }: ConnectPageProps & { probe: HubProbe }) {
+/** Connect / disconnect / copy buttons, state, name, battery and the hex log of a hub probe. */
+export function ProbePanel({
+  probe,
+  t,
+  copy,
+  intro,
+}: ConnectPageProps & { probe: HubProbe; intro: MessageKey }) {
   const snapshot = useSyncExternalStore(probe.subscribe, probe.getSnapshot, probe.getSnapshot);
   const [message, setMessage] = useState<MessageKey | undefined>();
   const logHeadingId = useId();
@@ -55,7 +61,7 @@ function ProbePanel({ probe, t, copy }: ConnectPageProps & { probe: HubProbe }) 
 
   return (
     <>
-      <p>{t("dev.connect.intro")}</p>
+      <p>{t(intro)}</p>
       <p>
         <button type="button" onClick={onConnect} disabled={busy || connected}>
           {t("dev.connect.connect")}
