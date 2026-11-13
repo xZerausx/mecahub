@@ -44,8 +44,11 @@ interface ReadyWaiter {
   readonly timer: Timer;
 }
 
-/** Physical ports of the Move Hub (set 17101). */
-export const MoveHubPort = { A: 0x00, B: 0x01, C: 0x02, D: 0x03 } as const;
+/**
+ * Ports of the Move Hub (set 17101): the four external connectors, and the internal RGB light and
+ * tilt sensor. capturado: fixtures/2026-11-13-move-hub-connect.txt (0x32 and 0x3A attach there).
+ */
+export const MoveHubPort = { A: 0x00, B: 0x01, C: 0x02, D: 0x03, Led: 0x32, Tilt: 0x3a } as const;
 
 /**
  * What is plugged into the hub, learned only from Hub Attached I/O (0x04) events. A link loss

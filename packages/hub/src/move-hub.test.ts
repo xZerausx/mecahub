@@ -5,6 +5,7 @@ import { FakeTransport, TransportError } from "@mecahub/transport";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HubError } from "./errors.js";
 import { MoveHub } from "./move-hub.js";
+import type { AttachedDevice } from "./move-hub.js";
 import type { PortDevice } from "./registry.js";
 import { configWithMotorOnC, startSim } from "./test-support/sim.js";
 
@@ -164,6 +165,85 @@ describe("MoveHub: connection and ports", () => {
     hub.dispose();
     await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("MoveHub: sensors on C and D", () => {
+  const attach = (port: number, ioType: number) =>
+    encodeHubAttachedIo({
+      type: "hubAttachedIo",
+      event: "attached",
+      port,
+      ioType,
+      hardwareVersion: v,
+      softwareVersion: v,
+    });
+  const detach = (port: number) =>
+    encodeHubAttachedIo({ type: "hubAttachedIo", event: "detached", port });
+
+  it("yields a sensor or a motor by io type, and swaps them on a replug", async () => {
+    const { hub, moveHub, close } = await startSim();
+    const events: string[] = [];
+    moveHub.onDeviceAttach((d) =>
+      events.push(`attach ${d.info.port} ${d.motor ? "motor" : d.colorDistance ? "sensor" : "?"}`),
+    );
+    moveHub.onDeviceDetach((d) => events.push(`detach ${d.info.port}`));
+    hub.injectRaw(attach(2, 0x25));
+    const sensor = moveHub.portC?.colorDistance;
+    expect(sensor?.port).toBe(2);
+    expect(moveHub.portC?.motor).toBeUndefined();
+    hub.injectRaw(detach(2));
+    expect(moveHub.portC).toBeUndefined();
+    hub.injectRaw(attach(2, 0x26));
+    expect(moveHub.portC?.motor?.port).toBe(2);
+    expect(moveHub.portC?.colorDistance).toBeUndefined();
+    hub.injectRaw(attach(2, 0x25)); // replaced without a detach
+    expect(moveHub.portC?.colorDistance).not.toBe(sensor);
+    expect(moveHub.portC?.motor).toBeUndefined();
+    expect(events).toEqual(["attach 2 sensor", "detach 2", "attach 2 motor", "attach 2 sensor"]);
+    close();
+  });
+
+  it("the detach event carries the torn-down handle, so it matches the attach event", async () => {
+    const { hub, moveHub, close } = await startSim();
+    const attached: AttachedDevice[] = [];
+    const detached: AttachedDevice[] = [];
+    moveHub.onDeviceAttach((d) => attached.push(d));
+    moveHub.onDeviceDetach((d) => detached.push(d));
+    hub.injectRaw(attach(2, 0x25));
+    hub.injectRaw(detach(2));
+    hub.injectRaw(attach(2, 0x26));
+    hub.injectRaw(detach(2));
+    hub.injectRaw(attach(2, 0x42)); // neither: nothing to match
+    hub.injectRaw(detach(2));
+    expect(attached[0]?.colorDistance).toBeDefined();
+    expect(detached[0]?.colorDistance).toBe(attached[0]?.colorDistance);
+    expect(detached[0]?.motor).toBeUndefined();
+    expect(attached[1]?.motor).toBeDefined();
+    expect(detached[1]?.motor).toBe(attached[1]?.motor);
+    expect(detached[1]?.colorDistance).toBeUndefined();
+    expect(detached[2]).toMatchObject({ motor: undefined, colorDistance: undefined });
+    expect(detached[2]?.info.ioType).toBe(0x42);
+    close();
+  });
+
+  it("a device of another type on C is reported with neither a motor nor a sensor", async () => {
+    const { hub, moveHub, close } = await startSim();
+    hub.injectRaw(attach(2, 0x42));
+    expect(moveHub.portC?.info.ioType).toBe(0x42);
+    expect(moveHub.portC?.motor).toBeUndefined();
+    expect(moveHub.portC?.colorDistance).toBeUndefined();
+    close();
+  });
+
+  it("unplugging a sensor drops its subscription without writing to the hub", async () => {
+    const { hub, sim, moveHub, close } = await startSim();
+    await moveHub.portD?.colorDistance?.onColor(() => undefined);
+    const before = sim.sentFrames.length;
+    hub.injectRaw(detach(3));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(sim.sentFrames).toHaveLength(before);
+    close();
   });
 });
 

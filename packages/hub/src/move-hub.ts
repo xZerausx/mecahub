@@ -6,7 +6,9 @@ import { MoveHubPort, PortRegistry } from "./registry.js";
 import type { PhysicalDevice, PortDevice, PortRegistryOptions } from "./registry.js";
 import { HubSession } from "./session.js";
 import type { HubSessionOptions } from "./session.js";
+import { ColorDistanceSensor } from "./color-distance-sensor.js";
 import { TachoMotor } from "./tacho-motor.js";
+import { TiltSensor } from "./tilt-sensor.js";
 
 export interface MoveHubOptions {
   readonly session?: HubSessionOptions;
@@ -20,10 +22,15 @@ export interface StopResult {
   readonly errors: unknown[];
 }
 
-/** A device on an external port (C or D). `motor` is set when it is a tacho motor. */
+/**
+ * A device on an external port (C or D). Exactly one of `motor` and `colorDistance` is set when the
+ * io type is one the hub layer models (a tacho motor, a color & distance sensor); both are
+ * undefined for any other device, whose `info` is still there.
+ */
 export interface AttachedDevice {
   readonly info: PhysicalDevice;
   readonly motor: TachoMotor | undefined;
+  readonly colorDistance: ColorDistanceSensor | undefined;
 }
 
 const isMotor = (ioType: number): boolean =>
@@ -43,10 +50,13 @@ export class MoveHub {
     readonly ab: MotorPair | undefined;
   };
 
-  private readonly external = new Map<number, TachoMotor>();
+  readonly tilt: TiltSensor;
+  private readonly external = new Map<number, TachoMotor | ColorDistanceSensor>();
   private pair: MotorPair | undefined;
   private readonly offRegistry: (() => void)[] = [];
   private readonly stopFailedListeners = new Set<(result: StopResult) => void>();
+  private readonly deviceAttachListeners = new Set<(device: AttachedDevice) => void>();
+  private readonly deviceDetachListeners = new Set<(device: AttachedDevice) => void>();
 
   constructor(
     private readonly transport: BleTransport,
@@ -56,6 +66,7 @@ export class MoveHub {
     this.registry = new PortRegistry(this.session, options.registry);
     const a = new TachoMotor(this.session, MoveHubPort.A, IoTypeId.InternalMotorWithTacho);
     const b = new TachoMotor(this.session, MoveHubPort.B, IoTypeId.InternalMotorWithTacho);
+    this.tilt = new TiltSensor(this.session, MoveHubPort.Tilt);
     const pairFor = () => this.pairFor();
     this.motors = {
       a,
@@ -164,13 +175,34 @@ export class MoveHub {
     return this.registry.onDetach(listener);
   }
 
+  /**
+   * Fires when a device is plugged into C or D (or announced after connecting), with its motor or
+   * sensor object already created. Returns the unsubscribe function.
+   */
+  onDeviceAttach(listener: (device: AttachedDevice) => void): () => void {
+    this.deviceAttachListeners.add(listener);
+    return () => void this.deviceAttachListeners.delete(listener);
+  }
+
+  /**
+   * Fires when a device is unplugged from C or D, with the same handle the attach event gave
+   * (`motor` or `colorDistance`), already disposed: match them by identity.
+   */
+  onDeviceDetach(listener: (device: AttachedDevice) => void): () => void {
+    this.deviceDetachListeners.add(listener);
+    return () => void this.deviceDetachListeners.delete(listener);
+  }
+
   /** Releases every listener and timer. Does not touch the link: `disconnect()` first. */
   dispose(): void {
     for (const off of this.offRegistry.splice(0)) off();
     this.motors.a.dispose();
     this.motors.b.dispose();
+    this.tilt.dispose();
     for (const m of this.external.values()) m.dispose();
     this.stopFailedListeners.clear();
+    this.deviceAttachListeners.clear();
+    this.deviceDetachListeners.clear();
     this.external.clear();
     this.registry.dispose();
     this.session.dispose();
@@ -227,27 +259,41 @@ export class MoveHub {
 
   private portDevice(port: number): AttachedDevice | undefined {
     const info = this.registry.device(port);
-    if (info?.kind !== "physical") return undefined;
-    return { info, motor: this.external.get(port) };
+    return info?.kind === "physical" ? this.handleOf(info) : undefined;
+  }
+
+  private handleOf(info: PhysicalDevice): AttachedDevice {
+    const device = this.external.get(info.port);
+    return {
+      info,
+      motor: device instanceof TachoMotor ? device : undefined,
+      colorDistance: device instanceof ColorDistanceSensor ? device : undefined,
+    };
   }
 
   private onAttached(device: PortDevice): void {
     this.external.get(device.port)?.dispose();
     this.external.delete(device.port);
-    if (
-      device.kind === "physical" &&
-      isMotor(device.ioType) &&
-      device.port >= MoveHubPort.C &&
-      device.port <= MoveHubPort.D
-    ) {
-      this.external.set(device.port, new TachoMotor(this.session, device.port, device.ioType));
+    if (device.kind !== "physical" || device.port < MoveHubPort.C || device.port > MoveHubPort.D) {
+      return;
     }
+    if (isMotor(device.ioType)) {
+      this.external.set(device.port, new TachoMotor(this.session, device.port, device.ioType));
+    } else if (device.ioType === IoTypeId.ColorDistanceSensor) {
+      this.external.set(device.port, new ColorDistanceSensor(this.session, device.port));
+    }
+    fire(this.deviceAttachListeners, this.handleOf(device));
   }
 
   private onDetached(device: PortDevice): void {
+    // The handle that was torn down: the detach event hands it over so it matches the attach event.
+    const handle = device.kind === "physical" ? this.handleOf(device) : undefined;
     // Unplugged: nothing to tell the hub.
     this.external.get(device.port)?.dispose({ notifyHub: false });
     this.external.delete(device.port);
+    if (handle && device.port >= MoveHubPort.C && device.port <= MoveHubPort.D) {
+      fire(this.deviceDetachListeners, handle);
+    }
   }
 }
 

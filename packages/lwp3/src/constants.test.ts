@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  ColorId,
   ErrorCode,
   HubPropertyId,
   HubPropertyOperation,
   IoTypeId,
   MessageType,
+  isColorId,
 } from "./constants.js";
 
 // literal: ids copied from the doc: message types 3.3, hub properties and operations 3.5,
@@ -45,5 +47,31 @@ describe("constants", () => {
     expect(IoTypeId.ColorDistanceSensor).toBe(0x0025);
     expect(IoTypeId.InternalMotorWithTacho).toBe(0x0027);
     expect(IoTypeId.InternalTilt).toBe(0x0028);
+  });
+
+  it("color ids", () => {
+    // derivado del layout: pylgbst peripherals.py:22-33 and node-poweredup consts.ts:138-151 agree
+    // on all twelve values (the doc's color table is not in the repo).
+    expect(ColorId).toEqual({
+      Black: 0,
+      Pink: 1,
+      Purple: 2,
+      Blue: 3,
+      LightBlue: 4,
+      Cyan: 5,
+      Green: 6,
+      Yellow: 7,
+      Orange: 8,
+      Red: 9,
+      White: 10,
+      None: 255,
+    });
+  });
+
+  it("isColorId tells table ids from other bytes", () => {
+    expect(isColorId(0)).toBe(true);
+    expect(isColorId(255)).toBe(true);
+    expect(isColorId(11)).toBe(false);
+    expect(isColorId(42)).toBe(false);
   });
 });

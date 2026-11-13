@@ -94,3 +94,29 @@ export const IoTypeId = {
   InternalTilt: 0x0028,
 } as const;
 export type IoTypeId = (typeof IoTypeId)[keyof typeof IoTypeId];
+
+/**
+ * Color ids of the LWP3 color table ('derivado del layout': pylgbst peripherals.py:22-33 and
+ * node-poweredup consts.ts:138-151 agree on all twelve values): what the color & distance sensor reports in mode 0 and what the
+ * hub LED takes in its index mode (names after the refs). `None` (255) is "no color": the sensor sees
+ * nothing, and for the LED it means off like `Black`.
+ */
+export const ColorId = {
+  Black: 0,
+  Pink: 1,
+  Purple: 2,
+  Blue: 3,
+  LightBlue: 4,
+  Cyan: 5,
+  Green: 6,
+  Yellow: 7,
+  Orange: 8,
+  Red: 9,
+  White: 10,
+  None: 255,
+} as const;
+export type ColorId = (typeof ColorId)[keyof typeof ColorId];
+
+const COLOR_IDS: readonly number[] = Object.values(ColorId);
+/** Whether `value` is an id of the color table (a sensor may report ones the refs do not list). */
+export const isColorId = (value: number): value is ColorId => COLOR_IDS.includes(value);

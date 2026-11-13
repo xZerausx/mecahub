@@ -6,13 +6,15 @@ Node-only code: no browser APIs, no React. All Bluetooth goes through `BleTransp
 
 ## Layers
 
-| Piece          | Job                                                                                                                                                                             |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HubSession`   | Owns the transport. Notification -> `splitFrames` -> `decode` -> typed `SessionEvent`. Decode errors are events, never exceptions. Correlates the request/response pairs below. |
-| `PortRegistry` | What is plugged where, from Hub Attached I/O (0x04). Knows the virtual AB port id (dynamic, 0x10 in the capture) and when the connect burst is over.                            |
-| `TachoMotor`   | One motor port (A, B, or an external motor on C/D): `run`, `runFor`, `rotate`, `goto`, `brake`, `float`, `onPosition`, `onSpeed`.                                               |
-| `MotorPair`    | The virtual AB port: `run(speedA, speedB)`, `brake`, `float`.                                                                                                                   |
-| `MoveHub`      | Facade: `connect`, `disconnect`, `motors.a/b/ab`, `portC`, `portD`, `onAttach`/`onDetach`, `stopAll`.                                                                           |
+| Piece                 | Job                                                                                                                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HubSession`          | Owns the transport. Notification -> `splitFrames` -> `decode` -> typed `SessionEvent`. Decode errors are events, never exceptions. Correlates the request/response pairs below.                     |
+| `PortRegistry`        | What is plugged where, from Hub Attached I/O (0x04). Knows the virtual AB port id (dynamic, 0x10 in the capture) and when the connect burst is over.                                                |
+| `TachoMotor`          | One motor port (A, B, or an external motor on C/D): `run`, `runFor`, `rotate`, `goto`, `brake`, `float`, `onPosition`, `onSpeed`.                                                                   |
+| `TiltSensor`          | The Move Hub's internal tilt sensor (port 0x3A): `onTilt`, `onOrientation`.                                                                                                                         |
+| `ColorDistanceSensor` | The color & distance sensor on C or D: `onColor`, `onDistance`, `onReflectedLight`, `onAmbientLight`, `onColorAndDistance`.                                                                         |
+| `MotorPair`           | The virtual AB port: `run(speedA, speedB)`, `brake`, `float`.                                                                                                                                       |
+| `MoveHub`             | Facade: `connect`, `disconnect`, `motors.a/b/ab`, `tilt`, `portC`, `portD` (a motor or a color & distance sensor, by io type), `onAttach`/`onDetach`, `onDeviceAttach`/`onDeviceDetach`, `stopAll`. |
 
 Commands that finish (`runFor`, `rotate`, `goto`) return a promise settled by the hub's Port Output
 Command Feedback (0x82): `"completed"`, or `"discarded"` when another command replaced it (an
@@ -25,6 +27,29 @@ the link is up. TODO: a combined mode (Port Input Format Setup Combined, 0x42) c
 A generic error (0x05) has no port, so it rejects a request only when exactly one of its type is
 pending and nothing of that type was written after it; otherwise it surfaces as an
 `unattributed-error` session event. A refused command (busy/full, 0x10) rejects `busy`.
+
+## Input devices
+
+`TachoMotor`, `TiltSensor` and `ColorDistanceSensor` share one `InputSubscription` per port: the first
+listener of a mode sets it (0x41, notifications on, optional `deltaInterval`), later listeners of the
+same mode share it, and asking for another mode while one is active rejects `mode-conflict` until
+the first one's listeners are all gone. Values are decoded with the lwp3 mode table. Disposing a
+device (or `MoveHub.dispose()`) turns the hub's reporting off while the link is up; unplugging one
+(a detach) does not write. A link loss ends every subscription (the hub forgot them): pass
+`onDropped` in the subscribe options to hear about it, and subscribe again after reconnecting. A
+value the layer cannot map (no layout for the mode, a length that does not match, a color id outside
+the table) is dropped for the listener and surfaces as a session `unknown-value` event
+(`{ port, mode, raw }`) for capture tooling.
+
+- Tilt: `onTilt(({x, y}))` in degrees, exactly as the two bytes decode. The refs disagree on the sign
+  of x (node-poweredup negates it): unresolved, TODO(hw). `onOrientation` (mode 1) is a single-ref,
+  unverified mode and reports a raw state id.
+- Color & distance: `onColor` gives a `ColorId` (lwp3, the color table; ids outside it are dropped,
+  `ColorId.None` = nothing seen); `onDistance` is in inches; `onColorAndDistance` is mode 8, so it
+  cannot run next to `onColor`.
+- `portC` / `portD` give an `AttachedDevice` with `motor` or `colorDistance` set by io type (both
+  undefined for any other device). A replug swaps the object. `onDeviceDetach` hands over the same
+  handle `onDeviceAttach` gave (already disposed), so match them by identity.
 
 ## How STOP works
 
