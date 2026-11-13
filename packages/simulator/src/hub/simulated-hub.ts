@@ -104,7 +104,7 @@ export class SimulatedHub {
   private readonly values = new Map<number, Uint8Array>();
   private readonly knownPorts = new Set<number>();
   private readonly formats = new Map<number, SimValueFormat>();
-  private name: string;
+  private advertisingName: string;
   private battery: number;
   private button: boolean;
   private link = false;
@@ -113,13 +113,23 @@ export class SimulatedHub {
     this.config = config;
     this.clock = options.clock ?? realClock;
     this.latencyMs = options.latencyMs ?? 0;
-    this.name = config.name;
+    this.advertisingName = config.name;
     this.battery = config.batteryPercent;
     this.button = config.buttonPressed;
     for (const p of [...config.ports, ...config.virtualPorts]) {
       this.knownPorts.add(p.port);
       if (p.valueFormat) this.formats.set(p.port, p.valueFormat);
     }
+  }
+
+  /** The advertising name (what `requestDevice` shows). */
+  get name(): string {
+    return this.advertisingName;
+  }
+
+  /** Fault injection: delivers `bytes` to the app as they are (may hold several messages, or garbage). */
+  injectRaw(bytes: Uint8Array): void {
+    this.emit(bytes);
   }
 
   get connected(): boolean {

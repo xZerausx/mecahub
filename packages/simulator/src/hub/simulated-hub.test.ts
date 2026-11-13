@@ -400,6 +400,29 @@ describe("SimulatedHub port input", () => {
   });
 });
 
+describe("SimulatedHub name and raw injection", () => {
+  it("exposes the advertising name from the config", () => {
+    expect(setup().hub.name).toBe("Move Hub");
+    expect(setup({ ...defaultMoveHubConfig(), name: "Other" }).hub.name).toBe("Other");
+  });
+
+  it("injectRaw delivers the bytes untouched as one notification, honouring link and latency", () => {
+    const off = setup();
+    off.hub.injectRaw(Uint8Array.of(1, 2, 3));
+    expect(off.sent).toEqual([]);
+
+    const { hub, sent } = connected();
+    hub.injectRaw(Uint8Array.of(0x05, 0x00, 0x05, 0x01, 0x05, 0x09));
+    expect(sent).toEqual([Uint8Array.of(0x05, 0x00, 0x05, 0x01, 0x05, 0x09)]);
+
+    const slow = connected(undefined, 10);
+    slow.hub.injectRaw(Uint8Array.of(7));
+    expect(slow.sent).toEqual([]);
+    slow.clock.advance(10);
+    expect(slow.sent).toEqual([Uint8Array.of(7)]);
+  });
+});
+
 describe("SimulatedHub unsupported and malformed input", () => {
   it("an unknown message type gets a generic error 'command not recognized'", () => {
     // supuesto: TODO(hw) layout derivado del layout (doc 3.9); the capture has no such case
