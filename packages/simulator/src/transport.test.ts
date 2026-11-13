@@ -185,6 +185,32 @@ describe("SimulatorTransport", () => {
       expect(sim.sentFrames).toEqual([requestBattery]);
     });
 
+    it("setWriteLatency changes the latency of the writes made after it", async () => {
+      const clock = new ManualClock();
+      const hub = new SimulatedHub(defaultMoveHubConfig(), { clock });
+      const sim = new SimulatorTransport(hub, { clock });
+      await sim.requestDevice();
+      await sim.connect();
+      await sim.write(requestBattery);
+      expect(sim.sentFrames).toHaveLength(1);
+      sim.setWriteLatency(30);
+      const slow = sim.write(requestBattery);
+      await Promise.resolve();
+      expect(sim.sentFrames).toHaveLength(1);
+      clock.advance(30);
+      await slow;
+      expect(sim.sentFrames).toHaveLength(2);
+      sim.setWriteLatency(0);
+      await sim.write(requestBattery);
+      expect(sim.sentFrames).toHaveLength(3);
+    });
+
+    it("setWriteLatency rejects a negative or non-finite value", () => {
+      const sim = new SimulatorTransport(new SimulatedHub());
+      expect(() => sim.setWriteLatency(-1)).toThrow(RangeError);
+      expect(() => sim.setWriteLatency(Number.NaN)).toThrow(RangeError);
+    });
+
     it("a stalled write plus an urgent one drops the link after urgentDeadlineMs, like the web adapter", async () => {
       vi.useFakeTimers();
       const hub = new SimulatedHub();

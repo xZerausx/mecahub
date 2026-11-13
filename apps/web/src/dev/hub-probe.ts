@@ -1,5 +1,10 @@
 import { decode, encodeHubProperty, splitFrames } from "@mecahub/lwp3";
-import { TransportError, type BleTransport, type TransportState } from "@mecahub/transport";
+import {
+  TransportError,
+  type BleTransport,
+  type TransportState,
+  type WritePriority,
+} from "@mecahub/transport";
 
 /** "choosing" = the browser device chooser is open (the click already called requestDevice). */
 export type ProbeState = "idle" | "choosing" | "connecting" | "connected" | "disconnected";
@@ -24,6 +29,14 @@ export interface HubProbe {
   /** Opens the browser chooser and connects. Call it directly from a click handler. */
   connect(): Promise<void>;
   disconnect(): Promise<void>;
+  /**
+   * Writes a frame and logs it as tx with `note`. Never throws: a failed write becomes a log note
+   * and the promise resolves to false (true when the write completed).
+   * Used by dev tools that send more than the probe's own requests (e.g. motor tests, STOP).
+   */
+  send(bytes: Uint8Array, note: string, options?: { priority?: WritePriority }): Promise<boolean>;
+  /** Adds a log line without a frame (e.g. a dev tool reporting something that was not sent). */
+  note(text: string): void;
   /** Stable between changes (safe for useSyncExternalStore). */
   getSnapshot(): ProbeSnapshot;
   subscribe(listener: (snapshot: ProbeSnapshot) => void): () => void;
@@ -110,15 +123,23 @@ export function createHubProbe(transport: BleTransport, options: HubProbeOptions
     unlisten = [];
   };
 
-  const send = async (bytes: Uint8Array, note: string): Promise<void> => {
+  const send = async (
+    bytes: Uint8Array,
+    note: string,
+    options?: { priority?: WritePriority },
+  ): Promise<boolean> => {
     append([entry("tx", bytes, note)]);
     try {
-      await transport.write(bytes);
+      await (options ? transport.write(bytes, options) : transport.write(bytes));
+      return true;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       append([entry("tx", new Uint8Array(0), `write failed: ${reason}`)]);
+      return false;
     }
   };
+
+  const note = (text: string): void => append([entry("tx", new Uint8Array(0), text)]);
 
   const connect = async (): Promise<void> => {
     if (snapshot.state !== "idle" && snapshot.state !== "disconnected") return;
@@ -193,6 +214,8 @@ export function createHubProbe(transport: BleTransport, options: HubProbeOptions
   return {
     connect,
     disconnect,
+    send,
+    note,
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
       listeners.add(listener);
