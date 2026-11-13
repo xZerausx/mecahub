@@ -50,6 +50,39 @@ A dev-only page with a simulated Move Hub (battery, button, tilt, color and dist
 
 Run `pnpm sim` (starts the web dev server and opens <http://localhost:5173/dev/simulator.html>). Like the connect page, it is not part of the production build.
 
+## Lab page
+
+A dev-only page for hardware sessions (not part of the production build): connect a real hub (or the simulator), drive its motors, LED and readings, run the measurement tools, and export everything the hub said.
+
+Run `pnpm lab` (or `pnpm dev` and open <http://localhost:5173/dev/lab.html> in Chrome or Edge). Without Web Bluetooth the page falls back to the simulator; simulator results are labelled `simulado` in the export and must never be saved as fixtures. The big **STOP** button (and the Escape key) is always there: it shows how long every STOP write took.
+
+### Hardware-session checklist
+
+The lab sends STOP by itself after every connect or reconnect. Steps 1 and 2 first, then any order. Lift the robot (wheels free) before anything that spins a motor.
+
+| Step                    | What to do on the page                                                                           | Answers (`TODO(hw)` in [docs/protocol-notes.md](docs/protocol-notes.md))                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| 1. Connect time         | Press Connect, pick the hub, read **Timings**. Repeat 2 or 3 times.                              | Connect time (chooser, Bluetooth, ports announced)                                                                |
+| 2. Write latency        | **Measure write latency** (20 battery requests, one by one).                                     | Write latency L: min / median / p95 / max of the write and of request-to-reply; sizes the STOP budget (n + 1) x L |
+| 3. Motor speed          | Tick the safety box, **Measure motor speed** on A (and B, C, D).                                 | `maxDegPerSec` of the simulator: degrees per second at 100 % and 50 % (no load vs. wheels on the floor differ)    |
+| 4. Double write         | **Test the double write**.                                                                       | Whether one GATT write may hold two messages (a single-write STOP would remove the (n + 1) factor)                |
+| 5. Feedback             | **Capture feedback**.                                                                            | Whether the hub sends status 0x0A (completed + idle) in 0x82, and which flags in what order                       |
+| 6. Link loss            | Tick the safety box, **Spin motor A and cut the connection**, watch, answer, let it reconnect.   | Whether the hub stops its motors by itself when the link drops (the lab always sends STOP after reconnecting)     |
+| 7. Tilt                 | Tilt the hub forward, back, left, right and read **Readings**. Note the signs of x and y.        | Tilt sign (the refs disagree on x)                                                                                |
+| 8. Colors               | Show colored bricks to the sensor and read **Color** (and the Diagnostics list for unknown ids). | Color ids of the table, what the sensor reports at rest                                                           |
+| 9. LED and button       | Pick LED colors; press the hub button; read the capture for the 0x41 setup and its reply.        | Whether the LED port setup (0x41) is needed (the lab sends it like the refs do)                                   |
+| 10. enableUpdates reply | In the capture, look at what follows the battery Enable Updates (`05 00 01 06 02`) right away.   | Whether Enable Updates is answered with an immediate Update                                                       |
+
+Then press **Copy capture text** (frames plus a `# result:` line per measurement) and paste it into `packages/lwp3/fixtures/<yyyy-mm-dd>-<what>.txt` (format in that folder's README), and **Download JSON results** for the numbers. Diagnostics lists the errors the hub sent that no request owns (`unattributed-error`) and the values the app could not read (`unknown-value`): include them in the report.
+
+How each tool measures, and its limits:
+
+- **Write latency**: waits for a quiet period first, pauses the lab's battery subscription while it runs, and drains after a lost reply so a late reply cannot be matched to the next sample. The clock is `performance.now` on the page; the write time includes the transport's write queue, the reply time also the hub's processing and the notification path. It does not tell write-with-response from without (the transport picks).
+- **Motor speed** (asks for the same "robot lifted, wheels free" confirmation as the link-loss test): runs the motor for 1 s and uses the position reports. `degPerSec` is the speed between the first reported change and the last report taken while the command ran (ramp-up and brake tail left out), so read it as a lower bound; the "maximum" assumes speed is linear in the percentage.
+- **Double write**: first sends each message alone (`control`), then both in one write, and waits 1 s for the replies; a very late reply looks like "none".
+- **Link loss**: the link is cut with a clean GATT disconnect, which is not the same as a hub that went out of range. You answer by looking at the motor; on the simulator the answer is derived from its state.
+- **Feedback**: keeps the flags byte of each 0x82 for the port (the full frames are in the capture).
+
 Behaviours marked `supuesto` in the code (sensor value layouts, motor timing, what the hub does when the link dies) are our own assumptions and have not been verified on real hardware: see [docs/protocol-notes.md](docs/protocol-notes.md).
 
 ## Repository layout
