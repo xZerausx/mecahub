@@ -265,6 +265,45 @@ describe("createHubProbe", () => {
     expect(probe.getSnapshot().state).toBe("connected");
   });
 
+  it("send() writes with the given priority and logs the frame as tx with its note", async () => {
+    const { transport, probe } = await connected();
+    const write = vi.spyOn(transport, "write");
+    const frame = Uint8Array.from([0x07, 0x00, 0x81, 0x10, 0x01, 0x01, 0x7f]);
+    await probe.send(frame, "STOP", { priority: "urgent" });
+    expect(write).toHaveBeenCalledWith(frame, { priority: "urgent" });
+    expect(probe.getSnapshot().log.at(-1)).toMatchObject({
+      dir: "tx",
+      hex: "07 00 81 10 01 01 7F",
+      note: "STOP",
+    });
+  });
+
+  it("send() resolves true when written and false when the write failed", async () => {
+    const { probe } = await connected();
+    await expect(probe.send(Uint8Array.from([0x05, 0x00, 0x01, 0x06, 0x05]), "ok")).resolves.toBe(
+      true,
+    );
+    const down = createHubProbe(new FakeTransport());
+    await expect(down.send(Uint8Array.from([0x05, 0x00, 0x01, 0x06, 0x05]), "x")).resolves.toBe(
+      false,
+    );
+  });
+
+  it("note() adds a log entry without a frame and exports it as a comment", async () => {
+    const { probe } = await connected();
+    probe.note("something happened");
+    expect(probe.getSnapshot().log.at(-1)).toMatchObject({ hex: "", note: "something happened" });
+    expect(probe.exportLog()).toContain("something happened");
+  });
+
+  it("send() logs a failed write as a note and does not throw", async () => {
+    const transport = new FakeTransport();
+    const probe = createHubProbe(transport);
+    await probe.send(Uint8Array.from([0x05, 0x00, 0x01, 0x06, 0x05]), "x");
+    const notes = probe.getSnapshot().log.flatMap((e) => (e.note ? [e.note] : []));
+    expect(notes.some((n) => n.startsWith("write failed"))).toBe(true);
+  });
+
   it("does not grow listeners on rapid reconnects", async () => {
     const transport = new FakeTransport();
     const active = trackListeners(transport);

@@ -37,7 +37,7 @@ export class SimulatorTransport implements BleTransport {
   private readonly heldConnects: { resolve: () => void; reject: (e: unknown) => void }[] = [];
   private readonly unsubscribeHub: () => void;
   private readonly clock: SimClock;
-  private readonly writeLatencyMs: number;
+  private writeLatencyMs: number;
   private stalled = false;
   private failWrite = false;
   private failConnect = false;
@@ -147,6 +147,12 @@ export class SimulatorTransport implements BleTransport {
   /** Completes the oldest stalled write: the hub receives it now. */
   releaseWrite(): void {
     this.held.shift()?.release();
+  }
+
+  /** Changes the time every later write takes to reach the hub (writes already in flight keep theirs). */
+  setWriteLatency(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) throw new RangeError(`invalid write latency: ${ms}`);
+    this.writeLatencyMs = ms;
   }
 
   /** Fault: the next write fails at the GATT level. */
