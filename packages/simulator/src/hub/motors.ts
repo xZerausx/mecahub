@@ -2,6 +2,7 @@ import {
   ErrorCode,
   MessageType,
   encodeGenericError,
+  encodePortOutputFeedback,
   type PortOutputCommandMessage,
 } from "@mecahub/lwp3";
 import type { SimClock, SimTimerHandle } from "./clock.js";
@@ -27,6 +28,13 @@ const TICK_MS = 10;
 
 type Command = PortOutputCommandMessage["command"];
 
+/** Feedback flags (doc 3.32). supuesto: when each is sent. TODO(hw) */
+const IN_PROGRESS = 0x01;
+const COMPLETED = 0x02;
+const DISCARDED = 0x04;
+const IDLE_COMPLETED = 0x0a;
+const BUSY_FULL = 0x10;
+
 /** What a command asks the motors of its port to do. */
 type Action =
   | { readonly kind: "run"; readonly speeds: readonly number[] }
@@ -42,7 +50,12 @@ interface Slot {
   readonly port: number;
   readonly motors: readonly SimMotor[];
   readonly virtual: boolean;
-  current: { readonly action: Action; remainingMs: number } | undefined;
+  current: { readonly action: Action; remainingMs: number; readonly feedback: boolean } | undefined;
+  /**
+   * The command waiting for the running one (startup "buffer"). supuesto: the buffer holds exactly
+   * one command (doc 3.32 only says busy/full exists). TODO(hw)
+   */
+  pending: { readonly action: Action; readonly feedback: boolean } | undefined;
 }
 
 /** Speed or power byte to the percent a motor runs at: 0 (float), 126 (hold) and 127 (brake) stop. */
@@ -69,14 +82,26 @@ export class MotorBank {
       if (!MOTOR_IO_TYPES.includes(p.ioType)) continue;
       const motor = new SimMotor(p.maxDegPerSec ?? DEFAULT_MAX_DEG_PER_SEC);
       this.motors.set(p.port, motor);
-      this.slots.set(p.port, { port: p.port, motors: [motor], virtual: false, current: undefined });
+      this.slots.set(p.port, {
+        port: p.port,
+        motors: [motor],
+        virtual: false,
+        current: undefined,
+        pending: undefined,
+      });
       this.shown.set(p.port, this.snapshot(motor));
     }
     for (const v of config.virtualPorts) {
       const a = this.motors.get(v.portA);
       const b = this.motors.get(v.portB);
       if (a && b) {
-        this.slots.set(v.port, { port: v.port, motors: [a, b], virtual: true, current: undefined });
+        this.slots.set(v.port, {
+          port: v.port,
+          motors: [a, b],
+          virtual: true,
+          current: undefined,
+          pending: undefined,
+        });
       }
     }
   }
@@ -119,14 +144,44 @@ export class MotorBank {
     const action = this.actionOf(slot, msg.command);
     if (action === "unrecognized") return this.error(ErrorCode.CommandNotRecognized);
     if (action === undefined) return this.error(ErrorCode.InvalidUse);
-    this.start(slot, action);
+    const feedback = msg.completion === "feedback";
+    if (msg.startup === "buffer" && this.inProgress(slot)) {
+      // Buffer if necessary: wait for the running command; a second waiter is refused.
+      if (slot.pending) this.report(slot.port, BUSY_FULL);
+      else slot.pending = { action, feedback };
+      return;
+    }
+    // Execute immediately (or nothing to wait for): whatever this port had is discarded.
+    this.discard(slot);
+    this.start(slot, action, feedback);
     this.settle();
+  }
+
+  /** A command is in progress until it completes; a run-until-replaced one is complete as it starts. */
+  private inProgress(slot: Slot): boolean {
+    return slot.current !== undefined && slot.current.action.kind !== "run";
+  }
+
+  /** Drops the running and the buffered command of a port, reporting one "discarded" if any asked. */
+  private discard(slot: Slot): void {
+    const asked =
+      (this.inProgress(slot) && slot.current?.feedback === true) || slot.pending?.feedback === true;
+    slot.current = undefined;
+    slot.pending = undefined;
+    if (asked) this.report(slot.port, DISCARDED);
+  }
+
+  private report(port: number, flags: number): void {
+    this.hooks.send(encodePortOutputFeedback({ ports: [{ port, flags }] }));
   }
 
   /** Stops every motor and forgets every command, silently. */
   stopAll(): void {
     this.catchUp();
-    for (const slot of this.slots.values()) slot.current = undefined;
+    for (const slot of this.slots.values()) {
+      slot.current = undefined;
+      slot.pending = undefined;
+    }
     for (const motor of this.motors.values()) motor.stop();
     this.settle();
   }
@@ -139,7 +194,10 @@ export class MotorBank {
     this.catchUp();
     if (this.timer !== undefined) this.clock.clearTimeout(this.timer);
     this.timer = undefined;
-    for (const slot of this.slots.values()) slot.current = undefined;
+    for (const slot of this.slots.values()) {
+      slot.current = undefined;
+      slot.pending = undefined;
+    }
     for (const motor of this.motors.values()) motor.stop();
   }
 
@@ -194,23 +252,27 @@ export class MotorBank {
     }
   }
 
-  private start(slot: Slot, action: Action): void {
+  private start(slot: Slot, action: Action, feedback: boolean): void {
     // A command takes its motors from whatever else was using them. supuesto: the other motor of a
     // virtual-port command stops with it. TODO(hw)
     for (const other of this.slots.values()) {
       if (other === slot || !other.current) continue;
-      if (other.motors.some((m) => slot.motors.includes(m))) this.release(other);
+      if (other.motors.some((m) => slot.motors.includes(m))) {
+        this.discard(other);
+        for (const m of other.motors) m.stop();
+      }
     }
-    this.apply(slot, action);
+    this.apply(slot, action, feedback);
+    if (feedback) {
+      this.report(slot.port, IN_PROGRESS);
+      // A run-until-replaced command has nothing to wait for: it is complete as it starts.
+      if (action.kind === "run") this.report(slot.port, IDLE_COMPLETED);
+    }
+    this.finishIfDone(slot);
     this.ensureTicking();
   }
 
-  private release(slot: Slot): void {
-    slot.current = undefined;
-    for (const m of slot.motors) m.stop();
-  }
-
-  private apply(slot: Slot, action: Action): void {
+  private apply(slot: Slot, action: Action, feedback: boolean): void {
     const { motors } = slot;
     switch (action.kind) {
       case "run":
@@ -228,9 +290,7 @@ export class MotorBank {
         motors.forEach((m) => m.moveTo(action.target, action.speed));
         break;
     }
-    slot.current = { action, remainingMs: action.kind === "timed" ? action.ms : 0 };
-    // A timed command with no time, or a move that is already there, is over at once.
-    this.finishIfDone(slot);
+    slot.current = { action, remainingMs: action.kind === "timed" ? action.ms : 0, feedback };
   }
 
   /** The command is over when its time ran out or every motor reached its target. */
@@ -247,6 +307,10 @@ export class MotorBank {
     // supuesto: float, hold and brake end states are the same here (no inertia model). TODO(hw)
     for (const m of slot.motors) m.stop();
     slot.current = undefined;
+    const next = slot.pending;
+    slot.pending = undefined;
+    if (cur.feedback) this.report(slot.port, next ? COMPLETED : IDLE_COMPLETED);
+    if (next) this.start(slot, next.action, next.feedback);
     return true;
   }
 
