@@ -1,5 +1,5 @@
 import { IoTypeId, encodeHubProperty, isColorId } from "@mecahub/lwp3";
-import { HubError, MoveHub, type TachoMotor } from "@mecahub/hub";
+import { HubError, MoveHub, type OutputStatus, type TachoMotor } from "@mecahub/hub";
 import {
   SimulatedHub,
   SimulatorTransport,
@@ -7,9 +7,20 @@ import {
   realClock,
   type SimClock,
   type SimHubConfig,
+  type SimTimerHandle,
 } from "@mecahub/simulator";
 import { TransportError, type BleTransport } from "@mecahub/transport";
+import type { Lwp3Message } from "@mecahub/lwp3";
 import { RecordingTransport } from "./recording-transport.js";
+import {
+  captureFeedback,
+  finishStopOnLinkLoss,
+  measureMotorSpeed,
+  measureWriteLatency,
+  startStopOnLinkLoss,
+  testMultiMessageWrite,
+  type ToolContext,
+} from "./lab-tools.js";
 import {
   LabError,
   STOP_BUDGET_MS,
@@ -22,7 +33,10 @@ import {
   type LabMode,
   type LabMotor,
   type LabSnapshot,
+  type MeasurementName,
+  type MeasurementResults,
   type MotorTarget,
+  type StopOnLinkLossResult,
 } from "./lab-types.js";
 
 export interface LabControllerOptions {
@@ -133,11 +147,17 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
   let linkEpoch = 0;
   let commandCounter = 0;
   const lastCommand = new Map<number, number>();
+  /** Bumped by every STOP: a measurement tool that sees it change stops what it is doing. */
+  let stopGeneration = 0;
   let stopStartedAt = 0;
   let chosenAt = 0;
   let connectedAt = 0;
   let clickAt = 0;
   let disposed = false;
+  /** Listeners of the position reports, by motor port (the measurement tools use them). */
+  const positionTaps = new Map<number, Set<(position: number, at: number) => void>>();
+  /** A link-loss test that dropped the link and waits for the operator's answer. */
+  let pendingLinkLoss: StopOnLinkLossResult | undefined;
 
   const publish = (patch: Partial<LabSnapshot>): void => {
     if (disposed) return;
@@ -188,9 +208,9 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     what: string,
     subscription: Promise<() => void>,
     store: (off: () => void) => void,
-  ) => {
+  ): Promise<void> => {
     const epoch = linkEpoch;
-    subscription.then(
+    return subscription.then(
       (off) => {
         if (epoch === linkEpoch) store(off);
       },
@@ -200,10 +220,10 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     );
   };
 
-  const subscribePort = (port: number): void => {
-    if (!hub.registry.ready) return;
+  const subscribePort = (port: number): Promise<void> => {
+    if (!hub.registry.ready) return Promise.resolve();
     const device = hub.registry.device(port);
-    if (device?.kind !== "physical") return;
+    if (device?.kind !== "physical") return Promise.resolve();
     portOffs.get(port)?.();
     portOffs.delete(port);
     const store = (off: () => void) => portOffs.set(port, off);
@@ -211,53 +231,72 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     if (kind === "motor") {
       const motor = motorOf(port);
       if (motor) {
-        track(
+        return track(
           `motor ${hexPort(port)}`,
-          motor.onPosition((position) => patchMotor(port, { position })),
+          motor.onPosition((position) => {
+            patchMotor(port, { position });
+            const at = now();
+            for (const tap of [...(positionTaps.get(port) ?? [])]) tap(position, at);
+          }),
           store,
         );
       }
     } else if (kind === "colorDistance" && port >= 2) {
       const sensor = (port === 2 ? hub.portC : hub.portD)?.colorDistance;
       if (sensor) {
-        track(
+        return track(
           `color sensor ${hexPort(port)}`,
           sensor.onColorAndDistance(({ color, inches }) => publish({ color, distance: inches })),
           store,
         );
       }
     }
+    return Promise.resolve();
   };
 
-  const subscribeAll = (): void => {
+  /** The lab's own battery subscription (paused while a tool matches battery replies). */
+  let batteryOff: (() => void) | undefined;
+  const subscribeBattery = (): Promise<void> =>
+    track(
+      "battery",
+      hub.onBattery((battery) => publish({ battery })),
+      (off) => {
+        batteryOff = off;
+        linkOffs.push(off);
+      },
+    );
+
+  /** Subscribes to everything and resolves once every setup was answered or failed. */
+  const subscribeAll = async (): Promise<void> => {
     linkEpoch++;
     linkOffs = [];
     portOffs = new Map();
     const keep = (off: () => void) => void linkOffs.push(off);
-    track(
-      "battery",
-      hub.onBattery((battery) => publish({ battery })),
-      keep,
-    );
-    track(
-      "button",
-      hub.button.onChange((button) => publish({ button })),
-      keep,
+    const pending: Promise<void>[] = [subscribeBattery()];
+    pending.push(
+      track(
+        "button",
+        hub.button.onChange((button) => publish({ button })),
+        keep,
+      ),
     );
     if (hub.registry.device(PORT_TILT)) {
-      track(
-        "tilt",
-        hub.tilt.onTilt((tilt) => publish({ tilt })),
-        keep,
+      pending.push(
+        track(
+          "tilt",
+          hub.tilt.onTilt((tilt) => publish({ tilt })),
+          keep,
+        ),
       );
     }
-    for (const device of hub.registry.devices()) subscribePort(device.port);
+    for (const device of hub.registry.devices()) pending.push(subscribePort(device.port));
     // What the capture header wants: the advertising name and the firmware, when the hub says them.
     for (const property of ["advertisingName", "firmwareVersion"] as const) {
       hub.session
         .send(encodeHubProperty({ type: "hubProperty", operation: "requestUpdate", property }))
         .catch(() => undefined);
     }
+    await Promise.allSettled(pending);
   };
 
   const onLinkEnded = (): void => {
@@ -300,7 +339,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       recorder.onDisconnect(onLinkEnded),
       hub.onAttach((device) => {
         refreshDevices();
-        subscribePort(device.port);
+        void subscribePort(device.port);
       }),
       hub.onDetach((device) => {
         portOffs.get(device.port)?.();
@@ -367,10 +406,11 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
 
   const finishConnect = async (): Promise<void> => {
     await hub.connect();
+    // Disposed meanwhile: dispose() sends the STOP and drops the link.
+    if (disposed) return;
     const readyAt = now();
     publish({
       connection: "connected",
-      ready: true,
       timings: {
         ...snapshot.timings,
         registryMs: elapsedMs(connectedAt, readyAt),
@@ -382,13 +422,18 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     // First, and awaited: an urgent write cancels the normal writes queued before it.
     recorder.note("STOP after connecting");
     await hub.stopAll();
-    subscribeAll();
+    if (disposed) return;
+    await subscribeAll();
+    // Ready only now: a tool started earlier would race the setup writes (and a tool that pauses
+    // the battery subscription would meet a half-made one). A link lost meanwhile stays not ready.
+    if (!disposed && recorder.state === "connected") publish({ ready: true });
   };
 
   const canSwitch = (): boolean =>
-    snapshot.connection === "idle" || snapshot.connection === "disconnected";
+    (snapshot.connection === "idle" || snapshot.connection === "disconnected") &&
+    pendingLinkLoss === undefined;
 
-  const connect = async (): Promise<void> => {
+  const connectNow = async (): Promise<void> => {
     if (!canSwitch()) return;
     clickAt = now();
     // First call, synchronously: the browser chooser needs the click's user gesture.
@@ -425,7 +470,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     }
   };
 
-  const reconnect = async (): Promise<void> => {
+  const reconnectNow = async (): Promise<void> => {
     if (snapshot.connection !== "disconnected") return;
     recorder.note("reconnect");
     clickAt = now();
@@ -437,6 +482,20 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       throw err;
     }
   };
+
+  /** The connect or reconnect in flight: dispose() waits for it. */
+  let connecting: Promise<void> | undefined;
+  const tracked = (attempt: Promise<void>): Promise<void> => {
+    connecting = attempt;
+    const clear = (): void => {
+      if (connecting === attempt) connecting = undefined;
+    };
+    attempt.then(clear, clear);
+    return attempt;
+  };
+  // The body of connect() runs synchronously up to the chooser, inside the click's user gesture.
+  const connect = (): Promise<void> => tracked(connectNow());
+  const reconnect = (): Promise<void> => tracked(reconnectNow());
 
   const disconnect = async (): Promise<void> => {
     await hub.disconnect();
@@ -496,17 +555,16 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
   const bounded = (
     target: MotorTarget,
     speed: number,
-    start: (motor: TachoMotor) => Promise<unknown>,
+    start: (motor: TachoMotor) => Promise<OutputStatus>,
   ): Promise<void> =>
     command(async () => {
       if (target === "ab") throw new LabError("unsupported", "no timed command on the AB port");
       const motor = motorForTarget(target);
       const id = setCommanded(target, speed);
-      try {
-        await start(motor);
-      } finally {
-        clearIfCurrent(target, id);
-      }
+      // Only a normal completion says the motor was stopped by the command itself. After a discard
+      // or an error (a link lost mid-run) the motor may still turn: the commanded speed stays until
+      // a STOP that went out zeroes it.
+      if ((await start(motor)) === "completed") clearIfCurrent(target, id);
     });
 
   const runFor = (target: MotorTarget, ms: number, speed: number): Promise<void> =>
@@ -533,6 +591,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
   // --- STOP ---
 
   const stop = async (): Promise<void> => {
+    stopGeneration++;
     if (snapshot.stop.status === "pending") {
       // One measurement per press sequence: the extra press still sends its frames (never skip a
       // STOP), but the timing started by the first one stands.
@@ -554,6 +613,169 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       // Only a STOP that went out may claim the motors are told to stop.
       ...(result.ok ? { motors: snapshot.motors.map((m) => ({ ...m, commandedSpeed: 0 })) } : {}),
     });
+  };
+
+  // --- measurement tools ---
+
+  const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => void clock.setTimeout(resolve, ms));
+
+  const waitForMessage: ToolContext["waitForMessage"] = (match, timeoutMs) => {
+    let finish: (value: { readonly at: number } | undefined) => void = () => undefined;
+    const promise = new Promise<{ readonly at: number } | undefined>((resolve) => {
+      finish = resolve;
+    });
+    const done = (value: { readonly at: number } | undefined): void => {
+      off();
+      clock.clearTimeout(timer);
+      finish(value);
+    };
+    const timer = clock.setTimeout(() => done(undefined), timeoutMs);
+    const off = hub.session.onEvent((event) => {
+      if (event.kind === "message" && match(event.message as Lwp3Message)) done({ at: now() });
+    });
+    return { promise, cancel: () => done(undefined) };
+  };
+
+  const waitQuiet: ToolContext["waitQuiet"] = (match, quietMs, maxMs) =>
+    new Promise((resolve) => {
+      let quiet: SimTimerHandle | undefined;
+      const finish = (): void => {
+        off();
+        if (quiet !== undefined) clock.clearTimeout(quiet);
+        clock.clearTimeout(limit);
+        resolve();
+      };
+      const arm = (): void => {
+        if (quiet !== undefined) clock.clearTimeout(quiet);
+        quiet = clock.setTimeout(finish, quietMs);
+      };
+      const limit = clock.setTimeout(finish, maxMs);
+      const off = hub.session.onEvent((event) => {
+        if (event.kind === "message" && match(event.message as Lwp3Message)) arm();
+      });
+      arm();
+    });
+
+  const setMeasurement = <N extends MeasurementName>(name: N, value: MeasurementResults[N]) => {
+    publish({ measurements: { ...snapshot.measurements, [name]: value } });
+  };
+
+  const toolContext = (): ToolContext => {
+    const generation = stopGeneration;
+    return {
+      hub,
+      now,
+      captureMs: () => Math.round(now() - chosenAt),
+      sleep,
+      waitForMessage,
+      motor: (port) => (snapshot.motors.some((m) => m.port === port) ? motorOf(port) : undefined),
+      onPosition: (port, listener) => {
+        const taps = positionTaps.get(port) ?? new Set();
+        positionTaps.set(port, taps);
+        taps.add(listener);
+        return () => void taps.delete(listener);
+      },
+      lastPosition: (port) => snapshot.motors.find((m) => m.port === port)?.position,
+      aborted: () => stopGeneration !== generation,
+      note: (text) => recorder.note(text),
+      runA: async (speed) => {
+        await run("a", speed);
+        return snapshot.lastError === undefined;
+      },
+      waitQuiet,
+      dropLink: () => recorder.disconnect(),
+      reconnect,
+      stop: async () => {
+        await stop();
+        return snapshot.stop;
+      },
+      simMotorRunning: (port) => sim?.hub.motorState(port).running,
+    };
+  };
+
+  const begin = (name: MeasurementName): void => {
+    if (snapshot.running !== undefined)
+      throw new LabError("busy", `${snapshot.running} is running`);
+    if (!snapshot.ready) throw new LabError("not-connected");
+    publish({ running: name });
+    recorder.note(`tool ${name}: start`);
+  };
+
+  const runTool = async <N extends MeasurementName>(
+    name: N,
+    body: (ctx: ToolContext) => Promise<MeasurementResults[N]>,
+    options: { pauseBatteryUpdates?: boolean } = {},
+  ): Promise<MeasurementResults[N]> => {
+    begin(name);
+    // The hub's own battery reports would pass for the replies the tool matches.
+    const paused = options.pauseBatteryUpdates === true && batteryOff !== undefined;
+    if (paused) {
+      batteryOff?.();
+      batteryOff = undefined;
+    }
+    try {
+      const result = await body(toolContext());
+      setMeasurement(name, result);
+      recorder.note(`tool ${name}: done`);
+      return result;
+    } finally {
+      if (paused && snapshot.ready) subscribeBattery();
+      publish({ running: undefined });
+    }
+  };
+
+  const requireReady = (): void => {
+    if (!snapshot.ready) throw new LabError("not-connected");
+  };
+
+  const requireMotor = (port: Exclude<MotorTarget, "ab">): number => {
+    requireReady();
+    motorForTarget(port);
+    return PORT_OF[port];
+  };
+
+  const testStopOnLinkLoss = async (options: {
+    confirmed: boolean;
+  }): Promise<StopOnLinkLossResult> => {
+    if (!options.confirmed) {
+      throw new LabError(
+        "not-confirmed",
+        "confirm that the robot is lifted and the wheels are free",
+      );
+    }
+    requireMotor("a");
+    begin("stopOnLinkLoss");
+    try {
+      const result = await startStopOnLinkLoss(toolContext());
+      setMeasurement("stopOnLinkLoss", result);
+      if (result.phase === "awaiting-observation") pendingLinkLoss = result;
+      else publish({ running: undefined });
+      return result;
+    } catch (err) {
+      publish({ running: undefined });
+      throw err;
+    }
+  };
+
+  const recordObservation = async (
+    observation?: "stopped" | "kept-running",
+  ): Promise<StopOnLinkLossResult> => {
+    const pending = pendingLinkLoss;
+    if (!pending)
+      throw new LabError("no-observation", "no link-loss test is waiting for an answer");
+    if (observation === undefined && !sim) {
+      throw new LabError("no-observation", "on a real hub say whether the motor stopped");
+    }
+    try {
+      const result = await finishStopOnLinkLoss(toolContext(), pending, observation);
+      setMeasurement("stopOnLinkLoss", result);
+      recorder.note("tool stopOnLinkLoss: done");
+      return result;
+    } finally {
+      pendingLinkLoss = undefined;
+      publish({ running: undefined });
+    }
   };
 
   // --- export ---
@@ -633,6 +855,34 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     float: (target) => hold(target, "float"),
     setLed,
     stop,
+    measureWriteLatency: (n = 20) =>
+      runTool("writeLatency", (ctx) => measureWriteLatency(ctx, n), { pauseBatteryUpdates: true }),
+    measureMotorSpeed: async (port, options) => {
+      if (!options.confirmed) {
+        throw new LabError(
+          "not-confirmed",
+          "confirm that the robot is lifted and the wheels are free",
+        );
+      }
+      const portNumber = requireMotor(port);
+      return runTool("motorSpeed", (ctx) =>
+        measureMotorSpeed(ctx, portNumber, options.speedPct ?? 100, options.ms ?? 1000),
+      );
+    },
+    testMultiMessageWrite: () =>
+      runTool("multiMessageWrite", testMultiMessageWrite, { pauseBatteryUpdates: true }),
+    testStopOnLinkLoss,
+    recordObservation,
+    captureFeedback: async (options) => {
+      if (!options.confirmed) {
+        throw new LabError(
+          "not-confirmed",
+          "confirm that the robot is lifted and the wheels are free",
+        );
+      }
+      const portNumber = requireMotor(options.port ?? "a");
+      return runTool("feedback", (ctx) => captureFeedback(ctx, portNumber));
+    },
     exportCapture,
     exportJson,
     get sim() {
@@ -642,6 +892,9 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       if (disposed) return;
       disposed = true;
       listeners.clear();
+      stopGeneration++; // tools in flight stop at their next check
+      // A connect in flight finishes first (it sends nothing after this): then STOP and disconnect.
+      if (connecting) await connecting.catch(() => undefined);
       // Never leave a motor running behind a closed page (or a hot reload): STOP, then the link.
       if (recorder.state === "connected") {
         try {

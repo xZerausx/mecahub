@@ -71,11 +71,119 @@ export interface LabCommandError {
   readonly message: string;
 }
 
-export type MeasurementName =
-  "writeLatency" | "motorSpeed" | "multiMessageWrite" | "stopOnLinkLoss" | "feedback";
+/** min / median / 95th percentile / max of a set of times, in ms (nearest-rank percentiles). */
+export interface Stats {
+  readonly n: number;
+  readonly min: number;
+  readonly p50: number;
+  readonly p95: number;
+  readonly max: number;
+}
 
-/** Latest result of each measurement tool, by name. */
-export type LabMeasurements = Partial<Record<MeasurementName, unknown>>;
+export interface WriteLatencyResult {
+  readonly requested: number;
+  /** Writes that completed. */
+  readonly completed: number;
+  /** Writes that rejected. */
+  readonly writeErrors: number;
+  /** Completed writes whose battery reply did not arrive within 2 s. */
+  readonly lostReplies: number;
+  /** Time until the write promise resolved. */
+  readonly write: Stats | undefined;
+  /** Time from the write call until the hub's reply arrived. */
+  readonly rtt: Stats | undefined;
+  /** STOP was pressed before all the samples were taken. */
+  readonly interrupted: boolean;
+}
+
+export interface MotorSpeedRun {
+  readonly speedPct: number;
+  readonly ms: number;
+  /** "completed" / "discarded" from the hub, or "error: <code>". */
+  readonly status: string;
+  /** Position change over the whole command, degrees (absolute). */
+  readonly degrees: number;
+  /** Position reports received during the command. */
+  readonly samples: number;
+  /** Speed between the first and the last position change reported (ramp-up excluded). */
+  readonly degPerSec: number | undefined;
+  /** Speed over the whole command (command sent until its feedback). */
+  readonly degPerSecWall: number;
+  /** `degPerSec` scaled to 100 % (assumes speed is linear in the percentage). */
+  readonly estimatedMaxDegPerSec: number | undefined;
+}
+
+export interface MotorSpeedResult {
+  readonly port: number;
+  readonly runs: readonly MotorSpeedRun[];
+  readonly interrupted: boolean;
+}
+
+export type MultiMessageOutcome = "both" | "first-only" | "second-only" | "none";
+
+export interface MultiMessageResult {
+  readonly outcome: MultiMessageOutcome;
+  /** The battery update (first frame) arrived. */
+  readonly battery: boolean;
+  /** The advertising name update (second frame) arrived. */
+  readonly advertisingName: boolean;
+  readonly waitedMs: number;
+  readonly writeError: string | undefined;
+  /**
+   * Control: each message sent ALONE first. If a message is silent even alone, a silent second
+   * message in the double write says nothing about concatenation.
+   */
+  readonly control: { readonly battery: boolean; readonly advertisingName: boolean };
+}
+
+export type StopOnLinkLossPhase = "awaiting-observation" | "done" | "aborted";
+
+export interface StopOnLinkLossResult {
+  readonly phase: StopOnLinkLossPhase;
+  readonly port: number;
+  readonly speedPct: number;
+  /** Capture time of the drop (ms since the device was chosen). */
+  readonly droppedAtMs: number | undefined;
+  readonly observation: "stopped" | "kept-running" | undefined;
+  /** How long after the drop the operator answered, ms: the operator's delay, not a hub timing. */
+  readonly answeredAfterMs: number | undefined;
+  /** The answer came from the simulator's motor state, not from a person. */
+  readonly derived: boolean | undefined;
+  readonly reconnected: boolean | undefined;
+  /** The STOP the lab sends after reconnecting (always). */
+  readonly stopAfterReconnect: { readonly ok: boolean; readonly ms: number } | undefined;
+}
+
+export interface FeedbackFrame {
+  /** Capture time, ms. */
+  readonly at: number;
+  /** Raw flags byte of the 0x82 for the port. */
+  readonly flags: number;
+}
+
+export interface FeedbackResult {
+  readonly port: number;
+  readonly degrees: number;
+  readonly speedPct: number;
+  /** "completed" / "discarded", or "error: <code>". */
+  readonly status: string;
+  readonly frames: readonly FeedbackFrame[];
+  /** A 0x82 with flags 0x0A (completed + idle) arrived: the TODO(hw) item. */
+  readonly sawCompletedIdle: boolean;
+}
+
+export interface MeasurementResults {
+  writeLatency: WriteLatencyResult;
+  motorSpeed: MotorSpeedResult;
+  multiMessageWrite: MultiMessageResult;
+  stopOnLinkLoss: StopOnLinkLossResult;
+  feedback: FeedbackResult;
+}
+
+export type MeasurementName = keyof MeasurementResults;
+
+/** Latest result of each measurement tool. */
+export type LabMeasurements = Partial<MeasurementResults>;
 
 export interface LabSnapshot {
   readonly mode: LabMode;
@@ -107,7 +215,14 @@ export interface LabSnapshot {
 }
 
 export type LabErrorCode =
-  "not-connected" | "busy" | "unsupported" | "no-motor" | "not-confirmed" | "no-observation";
+  | "not-connected"
+  | "busy"
+  | "unsupported"
+  | "no-motor"
+  | "not-confirmed"
+  | "no-observation"
+  /** A command the test needs could not be sent (the test was cancelled). */
+  | "command-failed";
 
 /** A lab operation that cannot run (the UI maps `code` to a message). */
 export class LabError extends Error {
@@ -144,6 +259,38 @@ export interface LabController {
   float(target: MotorTarget): Promise<void>;
   /** Color id of the LWP3 color table. */
   setLed(color: number): Promise<void>;
+  // --- measurement tools (each result goes into the snapshot and the export) ---
+  /** Harmless requests one after another: write time and request-to-reply time. */
+  measureWriteLatency(n?: number): Promise<WriteLatencyResult>;
+  /**
+   * Runs the motor for `ms` at `speedPct` and at 50 %, and measures degrees per second (a lower
+   * bound). Spins the motor: needs `confirmed: true` (robot lifted, wheels free).
+   */
+  measureMotorSpeed(
+    port: Exclude<MotorTarget, "ab">,
+    options: { confirmed: boolean; speedPct?: number; ms?: number },
+  ): Promise<MotorSpeedResult>;
+  /** Two frames in one GATT write: which replies come back. */
+  testMultiMessageWrite(): Promise<MultiMessageResult>;
+  /**
+   * Runs motor A at 30 % and drops the link. Needs `confirmed: true` (the robot is lifted, wheels
+   * free); LabError "not-confirmed" otherwise. Answer with `recordObservation`.
+   */
+  testStopOnLinkLoss(options: { confirmed: boolean }): Promise<StopOnLinkLossResult>;
+  /**
+   * The operator's answer after `testStopOnLinkLoss`. Then reconnects and ALWAYS sends STOP. In the
+   * simulator the answer may be omitted (derived from the motor state); on a real hub it is
+   * required (LabError "no-observation").
+   */
+  recordObservation(observation?: "stopped" | "kept-running"): Promise<StopOnLinkLossResult>;
+  /**
+   * Rotates a motor 90 degrees with feedback and records every 0x82 for it. The motor turns: needs
+   * `confirmed: true` (robot lifted, wheels free).
+   */
+  captureFeedback(options: {
+    confirmed: boolean;
+    port?: Exclude<MotorTarget, "ab">;
+  }): Promise<FeedbackResult>;
   /** STOP on every motor; measured from the call until the writes settled. Never rejects. */
   stop(): Promise<void>;
   /** Text in the fixtures format (packages/lwp3/fixtures/README.md) with the measurement results. */

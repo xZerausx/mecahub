@@ -25,7 +25,7 @@ async function settle(ms = 10): Promise<void> {
 async function connected(options: LabControllerOptions = {}): Promise<LabController> {
   const controller = lab(options);
   const connecting = controller.connect();
-  await settle(300);
+  await settle(3000);
   await connecting;
   await settle();
   return controller;
@@ -60,7 +60,7 @@ describe("mode", () => {
     expect(c.getSnapshot().mode).toBe("simulator");
     expect(c.sim).toBeDefined();
     const connecting = c.connect();
-    await settle(300);
+    await settle(3000);
     await connecting;
     expect(() => c.setMode("real")).toThrowError(expect.objectContaining({ code: "busy" }));
   });
@@ -144,7 +144,7 @@ describe("connecting", () => {
     expect(c.getSnapshot()).toMatchObject({ connection: "disconnected", ready: false });
     const framesBefore = c.exportCapture().split("\n").length;
     const again = c.reconnect();
-    await settle(300);
+    await settle(3000);
     await again;
     await settle();
     c.sim?.hub.setBattery(42);
@@ -304,7 +304,7 @@ describe("STOP safety", () => {
     c.sim?.transport.dropLink();
     await settle();
     const again = c.reconnect();
-    await settle(300);
+    await settle(3000);
     await again;
     await settle();
     expect(brakes(c)).toBeGreaterThan(after);
@@ -319,6 +319,53 @@ describe("STOP safety", () => {
     await Promise.all([first, second]);
     const stop = c.getSnapshot().stop;
     expect(stop.status === "done" && stop.ms).toBeLessThan(75);
+  });
+
+  it("keeps the commanded speed when a timed run ends without a normal completion", async () => {
+    const c = await connected();
+    const running = c.runFor("a", 5000, 50);
+    await settle(100);
+    c.sim?.transport.dropLink(); // the run is cut short: no completion, no STOP reached the hub
+    await settle(100);
+    await running;
+    await c.stop();
+    expect(c.getSnapshot().stop).toMatchObject({ status: "done", ok: false });
+    expect(c.getSnapshot().motors.find((m) => m.port === 0)?.commandedSpeed).toBe(50);
+  });
+
+  it("clears the commanded speed when a timed run completes", async () => {
+    const c = await connected();
+    const running = c.runFor("a", 300, 50);
+    await settle(1000);
+    await running;
+    expect(c.getSnapshot().motors.find((m) => m.port === 0)?.commandedSpeed).toBe(0);
+  });
+
+  it("dispose while connecting waits for the connect, then STOPs and drops the link", async () => {
+    const c = lab();
+    const sim = c.sim!;
+    sim.transport.holdNextConnect();
+    const connecting = c.connect().catch(() => undefined);
+    await settle(10);
+    const disposing = c.dispose();
+    sim.transport.releaseConnect("ok");
+    await settle(3000);
+    await connecting;
+    await disposing;
+    expect(sim.transport.state).toBe("disconnected");
+    const brakes = sim.transport.sentFrames.filter((f) => f[2] === 0x81 && f.at(-1) === 0x7f);
+    expect(brakes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("is not ready until the STOP and the subscriptions are done", async () => {
+    const c = lab({ simWriteLatencyMs: 30 });
+    const connecting = c.connect();
+    await settle(200); // the ports are announced (about 100 ms) but the setup writes are queued
+    expect(c.getSnapshot().ready).toBe(false);
+    await expect(c.measureWriteLatency(1)).rejects.toMatchObject({ code: "not-connected" });
+    await settle(5000);
+    await connecting;
+    expect(c.getSnapshot().ready).toBe(true);
   });
 
   it("dispose sends STOP and drops the link", async () => {
@@ -363,7 +410,7 @@ describe("diagnostics", () => {
     c.sim?.transport.dropLink();
     await settle();
     const connecting = c.connect();
-    await settle(300);
+    await settle(3000);
     await connecting;
     expect(c.getSnapshot().diagnostics).toEqual([]);
   });
