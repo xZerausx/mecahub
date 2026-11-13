@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { describeTransportContract } from "../contract.test-helpers.js";
+import { describeTransportContract } from "../testing/index.js";
 import { LWP3_CHARACTERISTIC_UUID, LWP3_SERVICE_UUID, TransportError } from "../transport.js";
 import type {
   BluetoothLike,

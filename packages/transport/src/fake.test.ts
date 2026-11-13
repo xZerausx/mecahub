@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeTransportContract } from "./contract.test-helpers.js";
+import { describeTransportContract } from "./testing/index.js";
 import { FakeTransport } from "./fake.js";
 import { TransportError } from "./transport.js";
 

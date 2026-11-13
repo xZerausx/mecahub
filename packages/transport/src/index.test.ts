@@ -28,10 +28,14 @@ describe("@mecahub/transport", () => {
     );
   });
 
-  it("publishes the web adapter only through the './web' subpath", () => {
+  it("publishes the web adapter and the test support only through subpaths", () => {
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
       exports: Record<string, string>;
     };
-    expect(pkg.exports).toEqual({ ".": "./src/index.ts", "./web": "./src/web/index.ts" });
+    expect(pkg.exports).toEqual({
+      ".": "./src/index.ts",
+      "./web": "./src/web/index.ts",
+      "./testing": "./src/testing/index.ts",
+    });
   });
 });

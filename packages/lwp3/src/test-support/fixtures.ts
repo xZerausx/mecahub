@@ -1,5 +1,6 @@
-// Test support only: never exported from the package index. Node `fs` is used here (and only
-// here) to read real-hub captures from packages/lwp3/fixtures/ (format: fixtures/README.md).
+// Test support only (published as @mecahub/lwp3/testing, never from the package index). Node `fs`
+// is used here (and only here) to read real-hub captures from packages/lwp3/fixtures/
+// (format: fixtures/README.md).
 import { readFileSync } from "node:fs";
 
 export interface CaptureFrame {

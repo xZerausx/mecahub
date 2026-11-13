@@ -236,7 +236,14 @@ importers:
 
   packages/runtime: {}
 
-  packages/simulator: {}
+  packages/simulator:
+    dependencies:
+      '@mecahub/lwp3':
+        specifier: workspace:*
+        version: link:../lwp3
+      '@mecahub/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/transport:
     devDependencies:

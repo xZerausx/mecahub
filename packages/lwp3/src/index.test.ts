@@ -16,6 +16,7 @@ describe("@mecahub/lwp3", () => {
         "IoTypeId",
         "MessageType",
         "decode",
+        "encodeGenericError",
         "encodeHubAttachedIo",
         "encodePortInputFormat",
         "encodePortInputFormatSetup",
