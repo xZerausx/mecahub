@@ -109,6 +109,27 @@ describe("FakeTransport", () => {
       expect(await stop).toBeInstanceOf(TransportError);
     });
 
+    it("without dropLinkOnTimeout the waiting urgent writes are cancelled by the queue itself and never reach send", async () => {
+      vi.useFakeTimers();
+      const calls: number[] = [];
+      const t = await connected({
+        send: (bytes) => {
+          calls.push(bytes[0] ?? -1);
+          return new Promise<void>(() => undefined); // never settles
+        },
+        writeQueue: { urgentDeadlineMs: 150 },
+      });
+      const hung = t.write(b(1)).catch((e: unknown) => e);
+      const stops = [2, 3].map((n) =>
+        t.write(b(n), { priority: "urgent" }).catch((e: unknown) => e),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      expect(await hung).toMatchObject({ code: "gatt" });
+      for (const r of await Promise.all(stops)) expect(r).toMatchObject({ code: "cancelled" });
+      expect(calls).toEqual([1]);
+      expect(t.state).toBe("connected"); // nobody dropped the link: the owner decides
+    });
+
     it("without dropLinkOnTimeout the link stays up when a write times out", async () => {
       vi.useFakeTimers();
       const t = await connected({
