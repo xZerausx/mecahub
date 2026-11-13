@@ -18,6 +18,8 @@ export { encodePortInputFormat, encodePortInputFormatSetup } from "./port-input.
 export { encodePortOutputCommand } from "./port-output.js";
 export { encodePortOutputFeedback } from "./port-output-feedback.js";
 export { encodePortValueSingle, readPortValue } from "./port-value.js";
+export { IO_MODES, decodeModeValue, getIoMode, getIoModes } from "./io-modes.js";
+export type { IoModeInfo } from "./io-modes.js";
 export type { PortValueKind } from "./port-value.js";
 export type {
   DecodeError,

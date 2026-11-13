@@ -30,6 +30,10 @@ describe("@mecahub/lwp3", () => {
         "encodeFrame",
         "encodeHubProperty",
         "encodeVersion",
+        "IO_MODES",
+        "decodeModeValue",
+        "getIoMode",
+        "getIoModes",
       ].sort(),
     );
   });

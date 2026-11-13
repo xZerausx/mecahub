@@ -229,7 +229,18 @@ importers:
 
   packages/blocks: {}
 
-  packages/hub: {}
+  packages/hub:
+    dependencies:
+      '@mecahub/lwp3':
+        specifier: workspace:*
+        version: link:../lwp3
+      '@mecahub/transport':
+        specifier: workspace:*
+        version: link:../transport
+    devDependencies:
+      '@mecahub/simulator':
+        specifier: workspace:*
+        version: link:../simulator
 
   packages/lwp3:
     devDependencies:

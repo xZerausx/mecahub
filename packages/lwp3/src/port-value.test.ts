@@ -79,6 +79,7 @@ describe("port value (single, 0x45)", () => {
     ["i8", b(0xff), -1],
     ["u16", b(0x34, 0x12), 0x1234],
     ["i16", b(0x00, 0x80), -32768],
+    ["u32", b(0xff, 0xff, 0xff, 0xff), 4294967295],
     ["i32", b(0xe8, 0x03, 0x00, 0x00), 1000],
     ["i32", b(0x18, 0xfc, 0xff, 0xff), -1000],
     ["f32", b(0x00, 0x00, 0x20, 0x41), 10],
@@ -93,6 +94,7 @@ describe("port value (single, 0x45)", () => {
     expect(readPortValue(b(), "u8")).toBeUndefined();
     expect(readPortValue(b(1), "u16")).toBeUndefined();
     expect(readPortValue(b(1, 2, 3), "i32")).toBeUndefined();
+    expect(readPortValue(b(1, 2, 3), "u32")).toBeUndefined();
     expect(readPortValue(b(1, 2, 3), "f32")).toBeUndefined();
     expect(readPortValue(b(0x07, 0xff), "u8")).toBe(7);
   });
