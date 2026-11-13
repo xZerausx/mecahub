@@ -15,6 +15,13 @@ export interface FakeTransportOptions {
   send?: (bytes: Uint8Array) => Promise<void>;
   /** Controls connect latency or failures; awaited while "connecting". */
   connect?: () => Promise<void>;
+  /** Write queue tuning (see `createWriteQueue`). */
+  writeQueue?: {
+    timeoutMs?: number;
+    urgentDeadlineMs?: number;
+    /** Like the web adapter: a write that times out declares the link dead and drops it. */
+    dropLinkOnTimeout?: boolean;
+  };
 }
 
 function asGatt(err: unknown, message: string): TransportError {
@@ -33,6 +40,7 @@ export class FakeTransport implements BleTransport {
   /** One queue per link, like the web adapter: a dead link's in-flight write cannot block a new one. */
   private queue: WriteQueue | undefined;
   private readonly sendHook: (bytes: Uint8Array) => Promise<void>;
+  private readonly queueOptions: NonNullable<FakeTransportOptions["writeQueue"]>;
   /** Identifies the current connection attempt; bumped when the link ends. A stale attempt is ignored. */
   private attempt = 0;
   private readonly notifyListeners = new Set<(bytes: Uint8Array) => void>();
@@ -42,17 +50,30 @@ export class FakeTransport implements BleTransport {
     this.device = options.device ?? { id: "fake", name: "Fake Hub" };
     this.sendHook = options.send ?? (() => Promise.resolve());
     this.connectHook = options.connect ?? (() => Promise.resolve());
+    this.queueOptions = options.writeQueue ?? {};
   }
 
   private newQueue(): WriteQueue {
-    return createWriteQueue(async (bytes) => {
-      try {
-        await this.sendHook(bytes);
-      } catch (err) {
-        throw asGatt(err, "write failed");
-      }
-      this.writes.push(bytes);
-    });
+    const { timeoutMs, urgentDeadlineMs, dropLinkOnTimeout } = this.queueOptions;
+    const queue: WriteQueue = createWriteQueue(
+      async (bytes) => {
+        try {
+          await this.sendHook(bytes);
+        } catch (err) {
+          throw asGatt(err, "write failed");
+        }
+        this.writes.push(bytes);
+      },
+      {
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...(urgentDeadlineMs === undefined ? {} : { urgentDeadlineMs }),
+        onTimeout: () => {
+          // Only this link's queue may drop it (a late timeout of a dead link is ignored).
+          if (dropLinkOnTimeout && this.queue === queue) this.emitDisconnect();
+        },
+      },
+    );
+    return queue;
   }
 
   get state(): TransportState {

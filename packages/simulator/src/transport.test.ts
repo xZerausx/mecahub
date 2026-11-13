@@ -4,11 +4,13 @@ import {
   decode,
   encodeHubProperty,
   encodePortInputFormatSetup,
+  encodePortOutputCommand,
   splitFrames,
 } from "@mecahub/lwp3";
 import { loadCapture } from "@mecahub/lwp3/testing";
+import { TransportError } from "@mecahub/transport";
 import { describeTransportContract } from "@mecahub/transport/testing";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ManualClock, SimulatedHub, defaultMoveHubConfig } from "./hub/index.js";
 import { SimulatorTransport } from "./transport.js";
 
@@ -163,6 +165,46 @@ describe("SimulatorTransport", () => {
     });
   });
 
+  describe("write latency and write timeout faults", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("writeLatencyMs: a write reaches the hub only after the latency on the injected clock", async () => {
+      const clock = new ManualClock();
+      const hub = new SimulatedHub(defaultMoveHubConfig(), { clock });
+      const sim = new SimulatorTransport(hub, { clock, writeLatencyMs: 30 });
+      await sim.requestDevice();
+      await sim.connect();
+      const done = sim.write(requestBattery);
+      await Promise.resolve();
+      expect(sim.sentFrames).toEqual([]);
+      clock.advance(29);
+      await Promise.resolve();
+      expect(sim.sentFrames).toEqual([]);
+      clock.advance(1);
+      await done;
+      expect(sim.sentFrames).toEqual([requestBattery]);
+    });
+
+    it("a stalled write plus an urgent one drops the link after urgentDeadlineMs, like the web adapter", async () => {
+      vi.useFakeTimers();
+      const hub = new SimulatedHub();
+      const sim = new SimulatorTransport(hub);
+      await sim.requestDevice();
+      await sim.connect();
+      sim.stallWrites();
+      const normal = sim.write(requestBattery).catch((e: unknown) => e);
+      const urgent = sim.write(requestBattery, { priority: "urgent" }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(149);
+      expect(sim.state).toBe("connected");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sim.state).toBe("disconnected");
+      expect(hub.connected).toBe(false);
+      expect(await normal).toBeInstanceOf(TransportError);
+      expect(await urgent).toBeInstanceOf(TransportError);
+      expect(sim.sentFrames).toEqual([]);
+    });
+  });
+
   it("dispose unsubscribes from the hub: a second transport over the same hub gets no duplicates", async () => {
     const hub = new SimulatedHub();
     const first = new SimulatorTransport(hub);
@@ -176,6 +218,27 @@ describe("SimulatorTransport", () => {
     await second.connect();
     expect(secondSeen).toHaveLength(9);
     expect(firstSeen).toEqual([]);
+  });
+
+  it("dispose does not dispose the hub, which the transport does not own", async () => {
+    const clock = new ManualClock();
+    const config = { ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false };
+    const hub = new SimulatedHub(config, { clock });
+    const sim = new SimulatorTransport(hub);
+    await sim.requestDevice();
+    await sim.connect();
+    await sim.write(
+      encodePortOutputCommand({
+        port: 0,
+        startup: "immediate",
+        completion: "none",
+        command: { sub: "startPower", power: 50 },
+      }),
+    );
+    sim.dispose();
+    expect(clock.pending).toBe(1); // the motor still ticks: the hub is the owner's to dispose
+    hub.dispose();
+    expect(clock.pending).toBe(0);
   });
 
   it("dispose drops a live link", async () => {

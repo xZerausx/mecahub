@@ -6,11 +6,15 @@ import {
   type TransportState,
   type WritePriority,
 } from "@mecahub/transport";
-import type { SimulatedHub } from "./hub/index.js";
+import { realClock, type SimClock, type SimulatedHub } from "./hub/index.js";
 
 export interface SimulatorTransportOptions {
   /** Device returned by `requestDevice`. Defaults to `{ id: "sim", name: <the hub's name> }`. */
   readonly device?: BleDeviceInfo;
+  /** Time source of `writeLatencyMs`. Defaults to the real clock. */
+  readonly clock?: SimClock;
+  /** Time every write takes to reach the hub (a write is in flight meanwhile). Default 0. */
+  readonly writeLatencyMs?: number;
 }
 
 interface HeldWrite {
@@ -32,6 +36,8 @@ export class SimulatorTransport implements BleTransport {
   private readonly held: HeldWrite[] = [];
   private readonly heldConnects: { resolve: () => void; reject: (e: unknown) => void }[] = [];
   private readonly unsubscribeHub: () => void;
+  private readonly clock: SimClock;
+  private readonly writeLatencyMs: number;
   private stalled = false;
   private failWrite = false;
   private failConnect = false;
@@ -43,10 +49,15 @@ export class SimulatorTransport implements BleTransport {
     private readonly hub: SimulatedHub,
     options: SimulatorTransportOptions = {},
   ) {
+    this.clock = options.clock ?? realClock;
+    this.writeLatencyMs = options.writeLatencyMs ?? 0;
     this.inner = new FakeTransport({
       device: options.device ?? { id: "sim", name: hub.name },
       send: (bytes) => this.send(bytes),
       connect: () => this.openLink(),
+      // Like the web adapter: a write that times out (a stalled urgent one gets only
+      // `urgentDeadlineMs`) declares the link dead and drops it.
+      writeQueue: { dropLinkOnTimeout: true },
     });
     // Registered first: the hub learns about the loss before any app listener runs.
     this.inner.onDisconnect(() => {
@@ -95,7 +106,8 @@ export class SimulatorTransport implements BleTransport {
   /**
    * Detaches from the hub (and drops a live link). Call it when done with a transport whose hub
    * outlives it, so a transport created later over the same hub does not get duplicates. Do not
-   * use the transport afterwards.
+   * use the transport afterwards. The hub is not owned by the transport (it is passed in and may
+   * serve another one), so it is not disposed here: call `hub.dispose()` for that.
    */
   dispose(): void {
     this.unsubscribeHub();
@@ -168,7 +180,10 @@ export class SimulatorTransport implements BleTransport {
     if (this.stalled) {
       await new Promise<void>((release, reject) => this.held.push({ bytes, release, reject }));
     }
-    if (epoch !== this.epoch) return; // defensive: held writes are rejected on link loss
+    if (this.writeLatencyMs > 0) {
+      await new Promise<void>((resolve) => this.clock.setTimeout(resolve, this.writeLatencyMs));
+    }
+    if (epoch !== this.epoch) return; // the link ended while the write was held or in flight
     this.delivered.push(bytes);
     this.hub.receive(bytes);
   }

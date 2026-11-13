@@ -12,6 +12,9 @@ import {
 } from "@mecahub/lwp3";
 import { realClock, type SimClock, type SimTimerHandle } from "./clock.js";
 import { defaultMoveHubConfig, type SimHubConfig, type SimValueFormat } from "./config.js";
+import { MotorBank, type MotorState } from "./motors.js";
+
+export type { MotorState } from "./motors.js";
 
 export interface SimulatedHubOptions {
   /** Defaults to the real clock. */
@@ -34,6 +37,7 @@ const isSupported = (p: HubPropertyName): p is SupportedProperty =>
   (SUPPORTED as readonly string[]).includes(p);
 
 interface InputSubscription {
+  readonly mode: number;
   readonly deltaInterval: number;
   readonly notify: boolean;
   /** Last value sent to the app (the delta is measured against it). */
@@ -104,10 +108,14 @@ export class SimulatedHub {
   private readonly values = new Map<number, Uint8Array>();
   private readonly knownPorts = new Set<number>();
   private readonly formats = new Map<number, SimValueFormat>();
+  private readonly motorListeners = new Set<(port: number, state: MotorState) => void>();
+  private readonly bank: MotorBank;
   private advertisingName: string;
   private battery: number;
   private button: boolean;
   private link = false;
+  /** The pending reaction to a link loss (`linkLossDetectionMs`). */
+  private lossTimer: SimTimerHandle | undefined;
 
   constructor(config: SimHubConfig = defaultMoveHubConfig(), options: SimulatedHubOptions = {}) {
     this.config = config;
@@ -116,6 +124,10 @@ export class SimulatedHub {
     this.advertisingName = config.name;
     this.battery = config.batteryPercent;
     this.button = config.buttonPressed;
+    this.bank = new MotorBank(config, this.clock, {
+      send: (frame) => this.emit(frame),
+      changed: (port, state) => this.onMotorChanged(port, state),
+    });
     for (const p of [...config.ports, ...config.virtualPorts]) {
       this.knownPorts.add(p.port);
       if (p.valueFormat) this.formats.set(p.port, p.valueFormat);
@@ -149,6 +161,8 @@ export class SimulatedHub {
   connect(): void {
     if (this.link) return;
     this.link = true;
+    // supuesto: a new link before the old loss was noticed: the hub never reacts to the old one
+    this.cancelLossWait();
     const { ports, virtualPorts } = this.config;
     const external = ports.filter((p) => p.port <= LAST_EXTERNAL_PORT);
     const internal = ports.filter((p) => p.port > LAST_EXTERNAL_PORT);
@@ -172,11 +186,31 @@ export class SimulatedHub {
 
   /** The link is gone: frames in flight are lost and the app's subscriptions end. */
   disconnect(): void {
+    // Nothing to lose when there is no link: a second call must not re-arm the loss reaction.
+    if (!this.link) return;
     this.link = false;
+    // supuesto: TODO(hw) does the real hub stop its motors when the link drops?
+    if (this.config.stopMotorsOnLinkLoss ?? true) {
+      const wait = this.config.linkLossDetectionMs ?? 0;
+      if (wait > 0) {
+        this.cancelLossWait();
+        this.lossTimer = this.clock.setTimeout(() => this.onLinkLossDetected(), wait);
+      } else this.bank.stopAll();
+    }
     for (const t of this.timers) this.clock.clearTimeout(t);
     this.timers.clear();
     this.subscribed.clear();
     this.inputs.clear();
+  }
+
+  private onLinkLossDetected(): void {
+    this.lossTimer = undefined;
+    this.bank.stopAll();
+  }
+
+  private cancelLossWait(): void {
+    if (this.lossTimer !== undefined) this.clock.clearTimeout(this.lossTimer);
+    this.lossTimer = undefined;
   }
 
   /** App to hub: one LWP3 message. Ignored while not connected. Never throws. */
@@ -191,11 +225,44 @@ export class SimulatedHub {
       case "portInputFormatSetup":
         this.onInputSetup(msg);
         return;
+      case "portOutputCommand":
+        this.bank.command(msg);
+        return;
       default:
-        // supuesto: TODO(hw) answer 0x05 'command not recognized' (doc 3.9). Port output
-        // commands (0x81) land here until the motor model exists.
+        // supuesto: TODO(hw) answer 0x05 'command not recognized' (doc 3.9).
         this.error(commandTypeOf(msg), ErrorCode.CommandNotRecognized);
     }
+  }
+
+  /** What a motor port is doing now. Throws RangeError for a port that is not a physical motor. */
+  motorState(port: number): MotorState {
+    return this.bank.state(port);
+  }
+
+  /**
+   * Subscribes to motor changes (position or speed): `port` is the physical motor port. Fires also
+   * while the link is down (the motors may keep running). Returns the unsubscribe function.
+   */
+  onMotorChange(listener: (port: number, state: MotorState) => void): () => void {
+    this.motorListeners.add(listener);
+    return () => void this.motorListeners.delete(listener);
+  }
+
+  /**
+   * Ends the simulation: the link is gone for good (no frames, no replies), every pending timer
+   * (latency, motor tick) is cleared and the motors freeze. Call it when done with the hub. Only
+   * matters with a real clock or `stopMotorsOnLinkLoss: false`, where motors keep ticking after a
+   * link loss until they stop. A disposed hub is not meant to be used again.
+   */
+  dispose(): void {
+    this.link = false;
+    for (const t of this.timers) this.clock.clearTimeout(t);
+    this.timers.clear();
+    this.subscribed.clear();
+    this.inputs.clear();
+    this.motorListeners.clear();
+    this.cancelLossWait();
+    this.bank.dispose();
   }
 
   setBattery(percent: number): void {
@@ -224,6 +291,9 @@ export class SimulatedHub {
   setSensor(port: number, raw: Uint8Array): void {
     if (!this.knownPorts.has(port)) throw new RangeError(`unknown port 0x${port.toString(16)}`);
     if (raw.length < 1) throw new RangeError("a sensor value needs at least one byte");
+    if (this.bank.isMotorPort(port)) {
+      throw new RangeError(`port 0x${port.toString(16)} is a motor: it reports its own value`);
+    }
     const format = this.formats.get(port);
     if (format && raw.length !== format.count * format.width) {
       throw new RangeError(
@@ -239,14 +309,29 @@ export class SimulatedHub {
 
   private reportIfChanged(port: number, sub: InputSubscription, value: Uint8Array): void {
     const last = sub.reported;
-    if (last && !this.changedEnough(port, last, value, sub.deltaInterval)) return;
+    if (last && !this.changedEnough(this.formatOf(port, sub.mode), last, value, sub.deltaInterval))
+      return;
     sub.reported = value;
     this.emit(encodePortValueSingle(port, value));
   }
 
-  private changedEnough(port: number, last: Uint8Array, now: Uint8Array, delta: number): boolean {
+  /** Value layout of a port in a mode: motors have their own, the rest comes from the config. */
+  private formatOf(port: number, mode: number): SimValueFormat | undefined {
+    if (this.bank.isMotorPort(port)) {
+      if (mode === 1) return { count: 1, width: 1, signed: true };
+      if (mode === 2) return { count: 1, width: 4, signed: true };
+      return undefined;
+    }
+    return this.formats.get(port);
+  }
+
+  private changedEnough(
+    format: SimValueFormat | undefined,
+    last: Uint8Array,
+    now: Uint8Array,
+    delta: number,
+  ): boolean {
     if (sameBytes(last, now)) return false;
-    const format = this.formats.get(port);
     const a = components(last, format);
     const b = components(now, format);
     if (a.length !== b.length) return true;
@@ -333,7 +418,7 @@ export class SimulatedHub {
     // supuesto: any mode is accepted on a known port, even one the device does not have.
     // TODO(hw) check what a real hub answers to an unsupported mode
     const { port, mode, deltaInterval, notify } = msg;
-    const sub: InputSubscription = { deltaInterval, notify, reported: undefined };
+    const sub: InputSubscription = { mode, deltaInterval, notify, reported: undefined };
     this.inputs.set(port, sub);
     // supuesto: the 0x47 reply echoes the setup; the capture has no 0x41. TODO(hw)
     this.emit(
@@ -341,8 +426,26 @@ export class SimulatedHub {
     );
     // supuesto: with notifications on, the current value follows the reply. TODO(hw) confirm that
     // a real hub reports the current value after a setup
-    const current = this.values.get(port);
+    const current = this.bank.isMotorPort(port)
+      ? this.bank.value(port, mode)
+      : this.values.get(port);
     if (notify && current) this.reportIfChanged(port, sub, current);
+  }
+
+  private onMotorChanged(port: number, state: MotorState): void {
+    for (const listener of [...this.motorListeners]) {
+      try {
+        listener(port, state);
+      } catch (err) {
+        queueMicrotask(() => {
+          throw err;
+        });
+      }
+    }
+    const sub = this.inputs.get(port);
+    if (!this.link || !sub?.notify) return;
+    const value = this.bank.value(port, sub.mode);
+    if (value) this.reportIfChanged(port, sub, value);
   }
 
   private error(commandType: number, code: number): void {

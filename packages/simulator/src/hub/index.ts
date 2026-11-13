@@ -9,3 +9,5 @@ export type {
 } from "./config.js";
 export { SimulatedHub } from "./simulated-hub.js";
 export type { SimulatedHubOptions } from "./simulated-hub.js";
+export type { MotorState } from "./motors.js";
+export { DEFAULT_MAX_DEG_PER_SEC } from "./motor.js";

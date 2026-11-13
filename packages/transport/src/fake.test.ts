@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { describeTransportContract } from "./testing/index.js";
 import { FakeTransport } from "./fake.js";
 import { TransportError } from "./transport.js";
@@ -85,5 +85,61 @@ describe("FakeTransport", () => {
     const t = await connected({ send: () => Promise.reject(boom) });
     await expect(t.write(b(1))).rejects.toBe(boom);
     expect(t.writes).toEqual([]);
+  });
+
+  describe("writeQueue options", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("dropLinkOnTimeout: a stalled urgent write tears the link down within urgentDeadlineMs", async () => {
+      vi.useFakeTimers();
+      const t = await connected({
+        send: () => new Promise<void>(() => undefined), // never settles
+        writeQueue: { urgentDeadlineMs: 150, dropLinkOnTimeout: true },
+      });
+      let dropped = 0;
+      t.onDisconnect(() => dropped++);
+      const first = t.write(b(1)).catch((e: unknown) => e);
+      const stop = t.write(b(2), { priority: "urgent" }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(149);
+      expect(t.state).toBe("connected");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.state).toBe("disconnected");
+      expect(dropped).toBe(1);
+      expect(await first).toBeInstanceOf(TransportError);
+      expect(await stop).toBeInstanceOf(TransportError);
+    });
+
+    it("without dropLinkOnTimeout the waiting urgent writes are cancelled by the queue itself and never reach send", async () => {
+      vi.useFakeTimers();
+      const calls: number[] = [];
+      const t = await connected({
+        send: (bytes) => {
+          calls.push(bytes[0] ?? -1);
+          return new Promise<void>(() => undefined); // never settles
+        },
+        writeQueue: { urgentDeadlineMs: 150 },
+      });
+      const hung = t.write(b(1)).catch((e: unknown) => e);
+      const stops = [2, 3].map((n) =>
+        t.write(b(n), { priority: "urgent" }).catch((e: unknown) => e),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      expect(await hung).toMatchObject({ code: "gatt" });
+      for (const r of await Promise.all(stops)) expect(r).toMatchObject({ code: "cancelled" });
+      expect(calls).toEqual([1]);
+      expect(t.state).toBe("connected"); // nobody dropped the link: the owner decides
+    });
+
+    it("without dropLinkOnTimeout the link stays up when a write times out", async () => {
+      vi.useFakeTimers();
+      const t = await connected({
+        send: () => new Promise<void>(() => undefined),
+        writeQueue: { timeoutMs: 50 },
+      });
+      const w = t.write(b(1)).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(await w).toBeInstanceOf(TransportError);
+      expect(t.state).toBe("connected");
+    });
   });
 });

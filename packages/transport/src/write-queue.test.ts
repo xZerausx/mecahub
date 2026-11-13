@@ -44,9 +44,7 @@ describe("createWriteQueue", () => {
   it("keeps exactly one send in flight and reports pending", async () => {
     const { sent, send } = controllableSend();
     const q = createWriteQueue(send);
-    void q.enqueue(b(1));
-    void q.enqueue(b(2));
-    void q.enqueue(b(3));
+    const all = [1, 2, 3].map((n) => q.enqueue(b(n)));
     await flush();
     expect(sent).toHaveLength(1);
     expect(q.pending).toBe(2);
@@ -54,6 +52,11 @@ describe("createWriteQueue", () => {
     await flush();
     expect(sent).toHaveLength(2);
     expect(q.pending).toBe(1);
+    // settle everything: a write left in flight would be timed out later, on a real timer
+    sent[1]?.resolve();
+    await flush();
+    sent[2]?.resolve();
+    await Promise.all(all);
   });
 
   it("urgent rejects every pending write with 'cancelled' and sends after the in-flight one", async () => {
@@ -89,9 +92,12 @@ describe("createWriteQueue", () => {
     const { sent, send } = controllableSend();
     const q = createWriteQueue(send);
     const inFlight = settled(q.enqueue(b(1)));
-    void q.enqueue(b(2), "urgent");
+    const urgent = q.enqueue(b(2), "urgent");
     sent[0]?.resolve();
     expect(await inFlight).toBe("ok");
+    await flush();
+    sent[1]?.resolve(); // settle the urgent one too: its deadline timer is real here
+    await urgent;
   });
 
   it("urgent cancels only pending normal writes; earlier pending urgents stay ahead in FIFO order", async () => {
@@ -170,17 +176,19 @@ describe("TransportError", () => {
 
 describe("createWriteQueue copy and timeout", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   it("copies bytes on enqueue so later caller mutation does not change what is sent", async () => {
     const { sent, send } = controllableSend();
     const q = createWriteQueue(send);
-    void q.enqueue(b(0));
+    const first = q.enqueue(b(0));
     const buf = b(1, 2, 3);
     const p = q.enqueue(buf);
     buf[0] = 0xff;
     sent[0]?.resolve();
+    await first;
     await flush();
     expect(sent[1]?.bytes).toEqual(b(1, 2, 3));
     sent[1]?.resolve();
@@ -245,19 +253,25 @@ describe("createWriteQueue copy and timeout", () => {
     expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 
-  it("STOP: urgentDeadlineMs is configurable, and an urgent write on an idle queue arms nothing", async () => {
+  it("STOP: urgentDeadlineMs is configurable, and an urgent write on an idle queue that settles arms nothing", async () => {
     vi.useFakeTimers();
     const { sent, send } = controllableSend();
     const onTimeout = vi.fn();
     const q = createWriteQueue(send, { urgentDeadlineMs: 40, onTimeout });
-    void settled(q.enqueue(b(1)));
-    void settled(q.enqueue(b(0xff), "urgent"));
+    const stop = q.enqueue(b(0xff), "urgent");
+    sent[0]?.resolve();
+    await stop;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onTimeout).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    // behind a hung write the deadline is 40 ms; the late urgent write is cancelled, never sent
+    const hung = settled(q.enqueue(b(1)));
+    const late = settled(q.enqueue(b(2), "urgent"));
     await vi.advanceTimersByTimeAsync(40);
     expect(onTimeout).toHaveBeenCalledTimes(1);
-    expect(sent).toHaveLength(2); // the urgent one went out right after the dead write
-    sent[1]?.resolve();
-    await vi.advanceTimersByTimeAsync(500);
-    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(await hung).toMatchObject({ code: "gatt" });
+    expect(await late).toMatchObject({ code: "cancelled" });
+    expect(sent.map((x) => x.bytes[0])).toEqual([0xff, 1]);
   });
 
   it("STOP: an in-flight write that settles in time is not timed out by the urgent deadline", async () => {
@@ -323,5 +337,160 @@ describe("createWriteQueue copy and timeout", () => {
     expect(stopCall?.at).toBeLessThanOrEqual(100);
     expect(calls.map((c) => c.byte)).toEqual([1, 0xff]);
     for (const r of await Promise.all(normals)) expect(r).toMatchObject({ code: "cancelled" });
+  });
+
+  describe("urgent burst deadline", () => {
+    /** A send that completes after `ms` (fake timers), recording when each write started. */
+    function slowSend(ms: number) {
+      const started: { byte: number | undefined; at: number }[] = [];
+      const t0 = Date.now();
+      const send = (bytes: Uint8Array): Promise<void> => {
+        started.push({ byte: bytes[0], at: Date.now() - t0 });
+        return new Promise<void>((r) => setTimeout(r, ms));
+      };
+      return { send, started, t0 };
+    }
+
+    it("STOP: three urgent writes at 60 ms each are declared dead at urgentDeadlineMs from the first enqueue", async () => {
+      vi.useFakeTimers();
+      const { send, t0 } = slowSend(60);
+      let firedAt = -1;
+      const q = createWriteQueue(send, { onTimeout: () => void (firedAt = Date.now() - t0) });
+      const burst = [1, 2, 3].map((n) => settled(q.enqueue(b(n), "urgent")));
+      await vi.advanceTimersByTimeAsync(149);
+      expect(firedAt).toBe(-1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(firedAt).toBe(150);
+      const [r1, r2, r3] = await Promise.all(burst);
+      expect(r1).toBe("ok");
+      expect(r2).toBe("ok");
+      // the one in flight at 150 ms is timed out; nothing is left pending
+      expect(r3).toMatchObject({ code: "gatt", message: "write timed out" });
+      expect(q.pending).toBe(0);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("STOP: urgent writes still waiting when the burst deadline hits are rejected 'cancelled' and never sent", async () => {
+      vi.useFakeTimers();
+      const { send, started } = slowSend(100);
+      const onTimeout = vi.fn();
+      const q = createWriteQueue(send, { onTimeout });
+      const burst = [1, 2, 3, 4].map((n) => settled(q.enqueue(b(n), "urgent")));
+      await vi.advanceTimersByTimeAsync(150);
+      const results = await Promise.all(burst);
+      expect(onTimeout).toHaveBeenCalledTimes(1);
+      expect(results[0]).toBe("ok");
+      expect(results[1]).toMatchObject({ code: "gatt" }); // in flight (100..200) at 150
+      expect(results[2]).toMatchObject({ code: "cancelled" });
+      expect(results[3]).toMatchObject({ code: "cancelled" });
+      expect(started.map((s) => s.byte)).toEqual([1, 2]);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("STOP: three urgent writes at 30 ms are all sent, no timeout, and no timer is left", async () => {
+      vi.useFakeTimers();
+      const { send, started } = slowSend(30);
+      const onTimeout = vi.fn();
+      const q = createWriteQueue(send, { onTimeout });
+      const burst = [1, 2, 3].map((n) => q.enqueue(b(n), "urgent"));
+      await vi.advanceTimersByTimeAsync(90);
+      await Promise.all(burst);
+      expect(started.map((s) => s.byte)).toEqual([1, 2, 3]);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(onTimeout).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("STOP: a later burst gets a fresh deadline", async () => {
+      vi.useFakeTimers();
+      const { send, t0 } = slowSend(60);
+      const fired: number[] = [];
+      const q = createWriteQueue(send, { onTimeout: () => void fired.push(Date.now() - t0) });
+      const first = q.enqueue(b(1), "urgent");
+      await vi.advanceTimersByTimeAsync(60);
+      await first;
+      await vi.advanceTimersByTimeAsync(500); // t = 560
+      expect(fired).toEqual([]);
+      const second = [2, 3, 4].map((n) => settled(q.enqueue(b(n), "urgent")));
+      await vi.advanceTimersByTimeAsync(150);
+      await Promise.all(second);
+      expect(fired).toEqual([710]); // 560 + 150
+    });
+
+    it("an urgent deadline that is also a stalled write's deadline reports one timeout, and the late urgent write is cancelled", async () => {
+      vi.useFakeTimers();
+      const { sent, send } = controllableSend();
+      const onTimeout = vi.fn();
+      const q = createWriteQueue(send, { urgentDeadlineMs: 40, onTimeout });
+      const hung = settled(q.enqueue(b(1)));
+      const urgent = settled(q.enqueue(b(0xff), "urgent"));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onTimeout).toHaveBeenCalledTimes(1);
+      expect(await hung).toMatchObject({ code: "gatt" });
+      expect(await urgent).toMatchObject({ code: "cancelled" });
+      expect(sent).toHaveLength(1); // the urgent write never reached send
+    });
+
+    it("a throwing onTimeout is surfaced but does not wedge the queue: the next write is sent", async () => {
+      vi.useFakeTimers();
+      const surfaced: (() => void)[] = [];
+      vi.spyOn(globalThis, "queueMicrotask").mockImplementation((fn) => void surfaced.push(fn));
+      const { sent, send } = controllableSend();
+      const boom = new Error("onTimeout boom");
+      const q = createWriteQueue(send, {
+        timeoutMs: 100,
+        onTimeout: () => {
+          throw boom;
+        },
+      });
+      const hung = settled(q.enqueue(b(1)));
+      const next = q.enqueue(b(2));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await hung).toMatchObject({ code: "gatt" });
+      expect(sent.map((x) => x.bytes[0])).toEqual([1, 2]);
+      sent[1]?.resolve();
+      await next;
+      expect(surfaced).toHaveLength(1);
+      expect(() => surfaced[0]?.()).toThrow(boom);
+      vi.restoreAllMocks();
+    });
+
+    it("STOP: an urgent write that is already past its deadline when its turn comes is never sent", async () => {
+      vi.useFakeTimers();
+      const { sent, send } = controllableSend();
+      const onTimeout = vi.fn();
+      const q = createWriteQueue(send, { onTimeout });
+      const inFlight = settled(q.enqueue(b(1)));
+      const urgent = settled(q.enqueue(b(0xff), "urgent"));
+      await vi.advanceTimersByTimeAsync(149);
+      sent[0]?.resolve(); // done at 149 ms: the urgent write's turn comes with 1 ms left
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await inFlight).toBe("ok");
+      expect(await urgent).toMatchObject({ code: "cancelled" });
+      expect(sent).toHaveLength(1);
+      expect(onTimeout).toHaveBeenCalledTimes(1); // a missed urgent write is a dead link
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("STOP: overlapping STOP presses on a healthy link never tear it down (each write has its own deadline)", async () => {
+      // A press is 3 urgent writes of 28 ms each (84 ms of work) every 80 ms for about a second:
+      // each press starts before the last one is done, so a deadline anchored on the first write
+      // of a burst would fire; per-write deadlines see every write done within ~135 ms (< 150).
+      vi.useFakeTimers();
+      const { send } = slowSend(28);
+      const onTimeout = vi.fn();
+      const q = createWriteQueue(send, { onTimeout });
+      const all: Promise<unknown>[] = [];
+      for (let press = 0; press < 12; press++) {
+        for (let n = 0; n < 3; n++) all.push(settled(q.enqueue(b(press, n), "urgent")));
+        await vi.advanceTimersByTimeAsync(80);
+      }
+      await vi.advanceTimersByTimeAsync(500);
+      expect(onTimeout).not.toHaveBeenCalled();
+      expect(await Promise.all(all)).toEqual(Array<string>(36).fill("ok"));
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });
