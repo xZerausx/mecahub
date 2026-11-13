@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { TransportError, type BleTransport } from "./transport.js";
+import { TransportError, type BleTransport } from "../transport.js";
 
 /**
  * What the shared contract needs from an implementation under test. The harness drives the
