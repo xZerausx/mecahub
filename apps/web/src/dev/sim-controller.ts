@@ -7,7 +7,6 @@ import {
   type MotorState,
   type SimClock,
   type SimHubConfig,
-  type SimPortConfig,
 } from "@mecahub/simulator";
 import { createHubProbe, type HubProbe } from "./hub-probe.js";
 
@@ -83,26 +82,6 @@ export interface SimControllerOptions {
   config?: SimHubConfig;
 }
 
-/**
- * supuesto: TODO(hw) value layouts of the two sensors. Port modes 0x43/0x44 are not modelled and
- * the simulated hub does not tell which mode the app subscribed to, so every mode gets the same
- * bytes: tilt = [x, y] (two signed bytes); color & distance = [color id, distance] (two unsigned
- * bytes). Real hardware has per-mode layouts (e.g. a 1-byte color mode), so apps tested only
- * here are not verified against them.
- */
-const SENSOR_FORMATS = new Map<number, SimPortConfig["valueFormat"]>([
-  [PORT_TILT, { count: 2, width: 1, signed: true }],
-  [PORT_COLOR_DISTANCE, { count: 2, width: 1, signed: false }],
-]);
-
-const withSensorFormats = (config: SimHubConfig): SimHubConfig => ({
-  ...config,
-  ports: config.ports.map((p) => {
-    const valueFormat = SENSOR_FORMATS.get(p.port);
-    return valueFormat && !p.valueFormat ? { ...p, valueFormat } : p;
-  }),
-});
-
 const byteIn = (v: number, min: number, max: number, what: string): number => {
   if (!Number.isInteger(v) || v < min || v > max) {
     throw new RangeError(`${what} must be an integer ${min}..${max}`);
@@ -118,7 +97,7 @@ const NO_PROFILE = { acc: false, dec: false } as const;
  */
 export function createSimController(options: SimControllerOptions = {}): SimController {
   const clock = options.clock ?? realClock;
-  const config = withSensorFormats(options.config ?? defaultMoveHubConfig());
+  const config = options.config ?? defaultMoveHubConfig();
   const hub = new SimulatedHub(config, { clock });
   const transport = new SimulatorTransport(hub, { clock });
   const probe = createHubProbe(transport, { now: () => clock.now() });
@@ -169,16 +148,17 @@ export function createSimController(options: SimControllerOptions = {}): SimCont
     if (snapshot.stop.status === "pending") publish({ stop: { status: "failed" } });
   };
 
+  // Per-mode values from the lwp3 mode table (derivado del layout, TODO(hw)): the app gets the
+  // layout of whichever mode it subscribed to. Mode 8 repeats modes 0 and 1: [color, inches, 0, 0].
   const pushColorDistance = (color: number, distance: number): void => {
-    if (hasPort(PORT_COLOR_DISTANCE))
-      hub.setSensor(PORT_COLOR_DISTANCE, Uint8Array.of(color, distance));
+    if (!hasPort(PORT_COLOR_DISTANCE)) return;
+    hub.setSensorMode(PORT_COLOR_DISTANCE, 0, [color]);
+    hub.setSensorMode(PORT_COLOR_DISTANCE, 1, [distance]);
+    hub.setSensorMode(PORT_COLOR_DISTANCE, 8, [color, distance, 0, 0]);
   };
   const pushTilt = (x: number, y: number): void => {
-    if (hasPort(PORT_TILT)) hub.setSensor(PORT_TILT, Uint8Array.of(x & 0xff, y & 0xff));
+    if (hasPort(PORT_TILT)) hub.setSensorMode(PORT_TILT, 0, [x, y]);
   };
-  pushTilt(0, 0);
-  pushColorDistance(snapshot.color, snapshot.distance);
-
   const offMotor = hub.onMotorChange((port, state) => {
     if (!motorPorts.includes(port)) return;
     publish({ motors: snapshot.motors.map((m) => (m.port === port ? { port, state } : m)) });

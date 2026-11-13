@@ -7,12 +7,14 @@ import {
   encodeHubProperty,
   encodePortInputFormat,
   encodePortValueSingle,
+  getIoMode,
   type HubPropertyName,
   type Lwp3Message,
 } from "@mecahub/lwp3";
 import { realClock, type SimClock, type SimTimerHandle } from "./clock.js";
 import { defaultMoveHubConfig, type SimHubConfig, type SimValueFormat } from "./config.js";
 import { MotorBank, type MotorState } from "./motors.js";
+import { defaultModeValue, encodeModeValue, formatOfMode } from "./sensor-modes.js";
 
 export type { MotorState } from "./motors.js";
 
@@ -105,7 +107,11 @@ export class SimulatedHub {
   private readonly timers = new Set<SimTimerHandle>();
   private readonly subscribed = new Set<SupportedProperty>();
   private readonly inputs = new Map<number, InputSubscription>();
+  /** Raw value per port (`setSensor`): answers every mode without a per-mode value. */
   private readonly values = new Map<number, Uint8Array>();
+  /** Per-mode values (`setSensorMode`), encoded with the lwp3 mode table. */
+  private readonly modeValues = new Map<number, Map<number, Uint8Array>>();
+  private readonly ioTypes = new Map<number, number>();
   private readonly knownPorts = new Set<number>();
   private readonly formats = new Map<number, SimValueFormat>();
   private readonly motorListeners = new Set<(port: number, state: MotorState) => void>();
@@ -130,6 +136,7 @@ export class SimulatedHub {
     });
     for (const p of [...config.ports, ...config.virtualPorts]) {
       this.knownPorts.add(p.port);
+      this.ioTypes.set(p.port, p.ioType);
       if (p.valueFormat) this.formats.set(p.port, p.valueFormat);
     }
   }
@@ -281,12 +288,64 @@ export class SimulatedHub {
   }
 
   /**
-   * Sets the raw value a port reports. Raw bytes because port modes (0x43/0x44) are not modelled
-   * yet, so there is no typed tilt/color/distance encoding. With notifications enabled on the
-   * port, a change is sent as 0x45 when any component moved by at least the delta interval
-   * against the last reported value; the first value always is. Components come from the port's
-   * `valueFormat` (the value must then be exactly `count * width` bytes); without one every byte
-   * is an unsigned component. supuesto: TODO(hw)
+   * Sets what a sensor reports in `mode`, as components (e.g. tilt mode 0 = [x, y] degrees). The
+   * layout (count, width, signed) comes from the lwp3 mode table for the io type configured on the
+   * port; RangeError for an unknown port, a motor, an io type or mode the table does not know, an
+   * output-only mode, or components the layout cannot carry. When the app is subscribed to this
+   * (port, mode) with notifications on, a change is sent as 0x45 if any component moved by at least
+   * the delta interval against the last reported value; the first value always is.
+   */
+  setSensorMode(port: number, mode: number, values: readonly number[]): void {
+    const info = this.sensorModeInfo(port, mode);
+    const bytes = encodeModeValue(info, values);
+    let perMode = this.modeValues.get(port);
+    if (!perMode) this.modeValues.set(port, (perMode = new Map()));
+    perMode.set(mode, bytes);
+    this.pushIfSubscribed(port, mode, bytes);
+  }
+
+  private sensorModeInfo(port: number, mode: number) {
+    if (!this.knownPorts.has(port)) throw new RangeError(`unknown port 0x${port.toString(16)}`);
+    if (this.bank.isMotorPort(port)) {
+      throw new RangeError(`port 0x${port.toString(16)} is a motor: it reports its own value`);
+    }
+    const info = getIoMode(this.ioTypes.get(port) ?? -1, mode);
+    if (!info) {
+      throw new RangeError(`port 0x${port.toString(16)} has no mode ${mode} in the mode table`);
+    }
+    if (info.access === "output") {
+      throw new RangeError(`mode ${mode} (${info.name}) is output-only: the hub never reports it`);
+    }
+    return info;
+  }
+
+  private pushIfSubscribed(port: number, mode: number, bytes: Uint8Array): void {
+    const sub = this.inputs.get(port);
+    if (!this.link || !sub?.notify || sub.mode !== mode) return;
+    this.reportIfChanged(port, sub, bytes);
+  }
+
+  /**
+   * The value a sensor port reports in `mode`: what `setSensorMode` set, else the raw bytes of
+   * `setSensor` (any mode), else the rest default of the mode table. Precedence in that order.
+   * Undefined for a mode with none of them: the hub acknowledges the setup and reports nothing.
+   * supuesto: TODO(hw) what a real hub does for a mode its device does not have.
+   */
+  private sensorValue(port: number, mode: number): Uint8Array | undefined {
+    return (
+      this.modeValues.get(port)?.get(mode) ??
+      this.values.get(port) ??
+      defaultModeValue(this.ioTypes.get(port) ?? -1, mode)
+    );
+  }
+
+  /**
+   * Sets the raw value a port reports in EVERY mode that has no `setSensorMode` value (those win).
+   * Kept for ports the mode table does not cover and for byte-level tests; prefer `setSensorMode`.
+   * With notifications enabled on the port, a change is sent as 0x45 when any component moved by
+   * at least the delta interval against the last reported value; the first value always is.
+   * Components come from the port's `valueFormat` (the value must then be exactly `count * width`
+   * bytes), else from the mode table, else every byte is an unsigned component. supuesto: TODO(hw)
    */
   setSensor(port: number, raw: Uint8Array): void {
     if (!this.knownPorts.has(port)) throw new RangeError(`unknown port 0x${port.toString(16)}`);
@@ -300,11 +359,11 @@ export class SimulatedHub {
         `port 0x${port.toString(16)} values are ${format.count * format.width} bytes`,
       );
     }
-    const value = raw.slice();
-    this.values.set(port, value);
+    this.values.set(port, raw.slice());
     const sub = this.inputs.get(port);
-    if (!this.link || !sub?.notify) return;
-    this.reportIfChanged(port, sub, value);
+    if (!sub || this.modeValues.get(port)?.has(sub.mode)) return; // shadowed by a per-mode value
+    const value = this.sensorValue(port, sub.mode);
+    if (value) this.pushIfSubscribed(port, sub.mode, value);
   }
 
   private reportIfChanged(port: number, sub: InputSubscription, value: Uint8Array): void {
@@ -322,7 +381,8 @@ export class SimulatedHub {
       if (mode === 2) return { count: 1, width: 4, signed: true };
       return undefined;
     }
-    return this.formats.get(port);
+    const info = getIoMode(this.ioTypes.get(port) ?? -1, mode);
+    return this.formats.get(port) ?? (info ? formatOfMode(info) : undefined);
   }
 
   private changedEnough(
@@ -428,7 +488,7 @@ export class SimulatedHub {
     // a real hub reports the current value after a setup
     const current = this.bank.isMotorPort(port)
       ? this.bank.value(port, mode)
-      : this.values.get(port);
+      : this.sensorValue(port, mode);
     if (notify && current) this.reportIfChanged(port, sub, current);
   }
 

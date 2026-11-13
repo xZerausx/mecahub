@@ -319,8 +319,9 @@ describe("SimulatorTransport", () => {
         notify: true,
       }),
     );
-    hub.setSensor(0x3a, b(3, 0xfe));
-    const [format, value] = decoded();
+    hub.setSensorMode(0x3a, 0, [3, -2]);
+    const [format, atRest, value] = decoded();
+    expect(atRest).toEqual({ type: "portValue", port: 0x3a, raw: b(0, 0) }); // default: flat
     expect(format).toEqual({
       type: "portInputFormat",
       port: 0x3a,
