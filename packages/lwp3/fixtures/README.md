@@ -24,4 +24,4 @@ Paste the output of **Copy log** as is:
 - `+<n>ms <dir> <hex>`: milliseconds since connecting, `tx` (sent to the hub) or `rx` (received),
   then the frame bytes in hex.
 
-A loader that turns these files into test vectors will come later; for now they are reference data.
+Load a file in tests with `loadCapture` from `packages/lwp3/src/test-support/fixtures.ts` (test-only; returns `{ at, dir, bytes }[]`). See `src/capture-2026-11-13.test.ts` for an example.

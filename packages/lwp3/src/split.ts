@@ -8,7 +8,8 @@ import type { DecodeError } from "./messages.js";
  * (on purpose different from `decodeHeader`, whose truncated offset is the buffer length). Never throws.
  *
  * No buffering across notifications.
- * TODO(hw): whether the Move Hub ever fragments one message across several notifications.
+ * TODO(hw): whether the Move Hub ever fragments one message across several notifications (the
+ * first capture, fixtures/2026-11-13-move-hub-connect.txt, saw one whole message per notification).
  */
 export function splitFrames(chunk: Uint8Array): { frames: Uint8Array[]; error?: DecodeError } {
   const frames: Uint8Array[] = [];
