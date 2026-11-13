@@ -9,5 +9,12 @@ export type { HubSessionOptions, OutputStatus, SessionEvent } from "./session.js
 export { MotorPair } from "./motor-pair.js";
 export { MoveHub } from "./move-hub.js";
 export type { AttachedDevice, MoveHubOptions, StopResult } from "./move-hub.js";
+export type { SubscribeOptions } from "./input-subscription.js";
 export { TachoMotor } from "./tacho-motor.js";
-export type { SubscribeOptions } from "./tacho-motor.js";
+export { TiltSensor } from "./tilt-sensor.js";
+export type { Tilt } from "./tilt-sensor.js";
+export { ColorDistanceSensor } from "./color-distance-sensor.js";
+export type { ColorAndDistance } from "./color-distance-sensor.js";
+export { HubLed } from "./hub-led.js";
+export { HubButton } from "./hub-button.js";
+export type { PropertySubscribeOptions } from "./property-subscription.js";

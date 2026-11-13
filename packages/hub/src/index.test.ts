@@ -17,6 +17,10 @@ describe("@mecahub/hub", () => {
         "MoveHubPort",
         "PortRegistry",
         "TachoMotor",
+        "TiltSensor",
+        "ColorDistanceSensor",
+        "HubLed",
+        "HubButton",
       ].sort(),
     );
   });

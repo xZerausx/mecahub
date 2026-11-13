@@ -29,7 +29,19 @@ export type SessionEvent =
    * The hub answered a 0x41 or 0x81 with a generic error that cannot be tied to one request (see the
    * class docs). Nothing was rejected because of it.
    */
-  | { readonly kind: "unattributed-error"; readonly error: GenericErrorMessage };
+  | { readonly kind: "unattributed-error"; readonly error: GenericErrorMessage }
+  /**
+   * A Port Value (0x45) the hub layer could not map to something typed: the mode table has no layout
+   * for it (or the length does not match, e.g. a value in flight when the mode changed), or a
+   * decoded value is outside the device's table (a color id the refs do not list). Diagnostics for
+   * capture tooling; the listeners of the device never see it.
+   */
+  | {
+      readonly kind: "unknown-value";
+      readonly port: number;
+      readonly mode: number;
+      readonly raw: Uint8Array;
+    };
 
 /** "sent": no feedback was asked for; the write is all there is to wait for. */
 export type OutputStatus = "completed" | "discarded" | "sent";
@@ -124,6 +136,11 @@ export class HubSession {
   /** Whether the transport link is up right now. */
   get linked(): boolean {
     return this.transport.state === "connected";
+  }
+
+  /** Emits an `unknown-value` event (see `SessionEvent`). */
+  reportUnknownValue(port: number, mode: number, raw: Uint8Array): void {
+    this.emit({ kind: "unknown-value", port, mode, raw: raw.slice() });
   }
 
   /** Returns the unsubscribe function. A throwing listener does not affect the others. */

@@ -223,12 +223,12 @@ describe("SimulatedHub port input", () => {
   it("setup replies with the port input format (0x47) echoing the setup", () => {
     // supuesto: TODO(hw) the capture has no 0x41; layout of 0x47 derivado del layout (doc 3.23)
     const { hub, sent } = connected();
-    hub.receive(setupFmt(0x03, 8, 1, true));
+    hub.receive(setupFmt(0x03, 9, 1, true)); // a mode with no rest value: nothing follows the reply
     expect(sent).toEqual([
       encodePortInputFormat({
         type: "portInputFormat",
         port: 0x03,
-        mode: 8,
+        mode: 9,
         deltaInterval: 1,
         notify: true,
       }),
@@ -351,11 +351,11 @@ describe("SimulatedHub port input", () => {
     expect(sent).toEqual([]);
   });
 
-  it("a setup without notify, or on a port without a value, replies with 0x47 only", () => {
+  it("a setup without notify, or on a mode without a value, replies with 0x47 only", () => {
     const { hub, sent } = connected();
     hub.setSensor(0x03, Uint8Array.of(7));
     hub.receive(setupFmt(0x03, 8, 1, false));
-    hub.receive(setupFmt(0x3a, 0, 1, true));
+    hub.receive(setupFmt(0x3a, 5, 1, true));
     expect(sent.map((f) => f[2])).toEqual([0x47, 0x47]);
   });
 

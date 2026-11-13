@@ -4,7 +4,7 @@ import { SimulatedHub, SimulatorTransport, defaultMoveHubConfig } from "@mecahub
 import { FakeTransport } from "@mecahub/transport";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HubError } from "./errors.js";
-import { PortRegistry } from "./registry.js";
+import { MoveHubPort, PortRegistry } from "./registry.js";
 import type { PortDevice } from "./registry.js";
 import { HubSession } from "./session.js";
 
@@ -269,5 +269,13 @@ describe("PortRegistry over the simulated hub (main path)", () => {
     session.dispose();
     sim.dispose();
     hub.dispose();
+  });
+});
+
+describe("MoveHubPort", () => {
+  it("names the internal devices' ports", () => {
+    // capturado: fixtures/2026-11-13-move-hub-connect.txt (RGB light on 0x32, tilt on 0x3A)
+    expect(MoveHubPort.Led).toBe(0x32);
+    expect(MoveHubPort.Tilt).toBe(0x3a);
   });
 });

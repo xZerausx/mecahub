@@ -33,13 +33,13 @@ async function setup(config?: SimHubConfig) {
   return { sim, clock, sent };
 }
 
-/** Subscribes the app to a port's values (mode 0, delta 1) so the hub reports changes. */
-async function subscribe(sim: SimController, port: number): Promise<void> {
+/** Subscribes the app to a port's values (default mode 0, delta 1) so the hub reports changes. */
+async function subscribe(sim: SimController, port: number, mode = 0): Promise<void> {
   await sim.probe.send(
     encodePortInputFormatSetup({
       type: "portInputFormatSetup",
       port,
-      mode: 0,
+      mode,
       deltaInterval: 1,
       notify: true,
     }),
@@ -263,14 +263,22 @@ describe("createSimController", () => {
     expect(sent().length).toBeGreaterThan(0);
   });
 
-  it("color and distance go to port 0x03 as [color id, distance] (supuesto mapping)", async () => {
+  it("color, distance and the combined mode each report in their own layout (lwp3 mode table)", async () => {
+    // derivado del layout: mode 0 = color id (u8), mode 1 = distance in inches (u8), mode 8 =
+    // [color, inches, unused, partial] (4 x u8); see packages/lwp3/src/io-modes.ts
     const { sim } = await setup();
-    await subscribe(sim, 0x03);
+    const rx = () => sim.probe.getSnapshot().log.filter((e) => e.dir === "rx");
+    await subscribe(sim, 0x03, 0);
     sim.setColor(9);
+    expect(rx().at(-1)?.hex).toBe("05 00 45 03 09");
+    await subscribe(sim, 0x03, 1);
     sim.setDistance(4);
-    const rx = sim.probe.getSnapshot().log.filter((e) => e.dir === "rx");
-    expect(rx.at(-1)?.hex).toBe("06 00 45 03 09 04");
-    expect(sim.getSnapshot()).toMatchObject({ color: 9, distance: 4 });
+    expect(rx().at(-1)?.hex).toBe("05 00 45 03 04");
+    await subscribe(sim, 0x03, 8);
+    expect(rx().at(-1)?.hex).toBe("08 00 45 03 09 04 00 00");
+    sim.setColor(3);
+    expect(rx().at(-1)?.hex).toBe("08 00 45 03 03 04 00 00");
+    expect(sim.getSnapshot()).toMatchObject({ color: 3, distance: 4 });
   });
 
   it("battery and button reach the hub and the snapshot", async () => {

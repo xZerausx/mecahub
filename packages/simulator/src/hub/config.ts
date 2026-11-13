@@ -1,9 +1,10 @@
 import type { Version } from "@mecahub/lwp3";
 
 /**
- * How a port's raw value bytes are laid out, so the delta interval can be applied per component.
- * supuesto: our own description (the hub does not report it and modes 0x43/0x44 are not modelled).
- * TODO(hw) derive it from real port mode info. Without it every byte is one unsigned component.
+ * Optional override of how a port's raw value bytes are laid out (delta interval per component,
+ * size check of `setSensor`). Without it the layout of the subscribed mode comes from the lwp3 mode
+ * table, and failing that every byte is one unsigned component. supuesto: TODO(hw) real port mode
+ * information (0x44) is not modelled.
  */
 export interface SimValueFormat {
   /** Components per value; `setSensor` needs exactly `count * width` bytes. */

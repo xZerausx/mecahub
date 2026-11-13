@@ -1,12 +1,14 @@
 export const PACKAGE_NAME = "@mecahub/lwp3";
 
 export {
+  ColorId,
   EndState,
   ErrorCode,
   HubPropertyId,
   HubPropertyOperation,
   IoTypeId,
   MessageType,
+  isColorId,
 } from "./constants.js";
 export { encodeHubAttachedIo } from "./attached-io.js";
 export { decode } from "./decode.js";

@@ -10,7 +10,9 @@ describe("@mecahub/lwp3", () => {
     expect(Object.keys(api).sort()).toEqual(
       [
         "PACKAGE_NAME",
+        "ColorId",
         "ErrorCode",
+        "isColorId",
         "HubPropertyId",
         "HubPropertyOperation",
         "IoTypeId",

@@ -47,3 +47,9 @@ export async function startSim(
     },
   };
 }
+
+/** The captured Move Hub with its color & distance sensor (0x25) moved from D to C. */
+export function configWithSensorOnC(): SimHubConfig {
+  const base = defaultMoveHubConfig();
+  return { ...base, ports: base.ports.map((p) => (p.port === 0x03 ? { ...p, port: 0x02 } : p)) };
+}

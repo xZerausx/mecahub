@@ -1,15 +1,10 @@
-import { EndState, IoTypeId, decodeModeValue } from "@mecahub/lwp3";
+import { EndState, IoTypeId } from "@mecahub/lwp3";
 import type { PortOutputCommand } from "@mecahub/lwp3";
-import { HubError } from "./errors.js";
+import { InputSubscription } from "./input-subscription.js";
+import type { SubscribeOptions } from "./input-subscription.js";
 import type { HubSession, OutputStatus } from "./session.js";
 
-export interface SubscribeOptions {
-  /**
-   * Minimum change that makes the hub report again (delta interval, doc 3.17). Default 1: every
-   * change. Only the first listener of a mode sets it; later ones share the subscription.
-   */
-  readonly deltaInterval?: number;
-}
+export type { SubscribeOptions } from "./input-subscription.js";
 
 // Input modes of the tacho motors (see lwp3 io-modes.ts for sources): 1 = speed (i8, percent),
 // 2 = position (i32, degrees). derivado del layout, TODO(hw).
@@ -24,13 +19,6 @@ const TIMED_FEEDBACK_MARGIN_MS = 2000;
 const NO_PROFILE = { acc: false, dec: false } as const;
 const MAX_POWER = 100;
 
-interface Subscription {
-  readonly mode: number;
-  readonly listeners: Set<(value: number) => void>;
-  /** Settles when the hub confirmed the setup. */
-  ready: Promise<void> | undefined;
-}
-
 /**
  * A motor with a tachometer on one port (A, B, or an external motor on C/D). Speeds are percent
  * (-100..100). Every command is sent "immediate": it replaces whatever the port was doing, and the
@@ -42,15 +30,16 @@ interface Subscription {
  * contract. TODO: a combined mode (Port Input Format Setup Combined, 0x42) could serve both later.
  */
 export class TachoMotor {
-  private subscription: Subscription | undefined;
-  private offEvents: (() => void) | undefined;
+  private readonly input: InputSubscription;
 
   constructor(
     private readonly session: HubSession,
     readonly port: number,
     /** Device type of the port, which selects the value layouts (`IoTypeId`). */
     private readonly ioType: number = IoTypeId.InternalMotorWithTacho,
-  ) {}
+  ) {
+    this.input = new InputSubscription(session, port, ioType);
+  }
 
   /** Runs until another command replaces it. Resolves once the command is written. */
   async run(speed: number): Promise<void> {
@@ -132,7 +121,7 @@ export class TachoMotor {
     listener: (degrees: number) => void,
     options: SubscribeOptions = {},
   ): Promise<() => void> {
-    return this.subscribe(MODE_POSITION, listener, options);
+    return this.input.subscribe(MODE_POSITION, (v) => listener(v[0] as number), options);
   }
 
   /** Speed in percent (-100..100). Same contract as `onPosition`. */
@@ -140,7 +129,7 @@ export class TachoMotor {
     listener: (percent: number) => void,
     options: SubscribeOptions = {},
   ): Promise<() => void> {
-    return this.subscribe(MODE_SPEED, listener, options);
+    return this.input.subscribe(MODE_SPEED, (v) => listener(v[0] as number), options);
   }
 
   /**
@@ -149,11 +138,7 @@ export class TachoMotor {
    * forgot it already.
    */
   dispose(options: { notifyHub?: boolean } = {}): void {
-    const sub = this.subscription;
-    this.forget();
-    if (sub && options.notifyHub !== false && this.session.linked) {
-      this.session.setInputFormat(this.port, sub.mode, 1, false).catch(() => undefined);
-    }
+    this.input.dispose(options);
   }
 
   private async send(command: PortOutputCommand): Promise<void> {
@@ -170,82 +155,5 @@ export class TachoMotor {
       { port: this.port, startup: "immediate", completion: "feedback", command },
       timeoutMs === undefined ? {} : { timeoutMs },
     );
-  }
-
-  private async subscribe(
-    mode: number,
-    listener: (value: number) => void,
-    options: SubscribeOptions,
-  ): Promise<() => void> {
-    let sub = this.subscription;
-    if (sub && sub.mode !== mode) {
-      throw new HubError(
-        "mode-conflict",
-        `port 0x${this.port.toString(16)} is already reporting mode ${sub.mode}`,
-      );
-    }
-    if (!sub) {
-      const created: Subscription = { mode, listeners: new Set([listener]), ready: undefined };
-      sub = created;
-      // Subscribe before asking: the hub may report the current value right behind its reply.
-      this.subscription = created;
-      this.listen();
-      created.ready = this.session
-        .setInputFormat(this.port, mode, options.deltaInterval ?? 1, true)
-        .then(() => undefined);
-      created.ready.catch(() => {
-        if (this.subscription === created) this.forget();
-      });
-    } else {
-      sub.listeners.add(listener);
-    }
-    const current = sub;
-    try {
-      await current.ready;
-    } catch (err) {
-      current.listeners.delete(listener);
-      throw err;
-    }
-    return () => this.unsubscribe(current, listener);
-  }
-
-  private unsubscribe(sub: Subscription, listener: (value: number) => void): void {
-    if (!sub.listeners.delete(listener) || sub.listeners.size > 0) return;
-    if (this.subscription !== sub) return;
-    this.forget();
-    // Best effort: notifications off. A failure only means values keep flowing to nobody.
-    this.session.setInputFormat(this.port, sub.mode, 1, false).catch(() => undefined);
-  }
-
-  private listen(): void {
-    if (this.offEvents) return;
-    this.offEvents = this.session.onEvent((event) => {
-      if (event.kind === "link-lost") {
-        this.forget(); // the hub forgot the subscription with the link
-        return;
-      }
-      if (event.kind !== "message" || event.message.type !== "portValue") return;
-      if (event.message.port !== this.port) return;
-      const sub = this.subscription;
-      if (!sub) return;
-      // A value still in flight from the previous mode has the wrong length: undefined, dropped.
-      const value = decodeModeValue(this.ioType, sub.mode, event.message.raw)?.[0];
-      if (value === undefined) return;
-      for (const l of [...sub.listeners]) {
-        try {
-          l(value);
-        } catch (err) {
-          queueMicrotask(() => {
-            throw err;
-          });
-        }
-      }
-    });
-  }
-
-  private forget(): void {
-    this.subscription = undefined;
-    this.offEvents?.();
-    this.offEvents = undefined;
   }
 }
