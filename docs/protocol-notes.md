@@ -2,7 +2,19 @@
 
 Findings from the real hub vs. the official docs.
 
-Nothing recorded yet. Add each discrepancy with: date, message/bytes, expected (docs), observed (hub), firmware version.
+No discrepancy between the docs and the hub has been found so far. Add each one with: date, message/bytes, expected (docs), observed (hub), firmware version.
+
+## Confirmed by capture
+
+First real Move Hub capture, 2026-11-13 (Web Bluetooth; Chrome on Linux/BlueZ per the operator, not recorded in the file): `packages/lwp3/fixtures/2026-11-13-move-hub-connect.txt`. Tests: `packages/lwp3/src/capture-2026-11-13.test.ts`. The hub firmware version was not read in this capture.
+
+- Virtual port AB id is dynamic: the hub sent `09 00 04 10 02 27 00 00 01` (Attached Virtual I/O, port **0x10**, type 0x0027, from ports 0x00 + 0x01). Keep reading it from the event; never hardcode it.
+- The Move Hub advertises the LWP3 service UUID: the `requestDevice` filter by service UUID alone found it in Chrome.
+- Framing: in this capture every notification carried exactly one complete message (inferred: the probe logs all frames of one notification in the same synchronous pass, so they would share a timestamp; every rx frame here has a distinct one, 2+ ms apart, and no split error was logged), with no multi-message notifications and no fragmentation. Inconclusive in general (one short session), so `splitFrames` stays and the fragmentation TODO below stays.
+- Right after connecting, and unrequested, the hub sends 0x04 Hub Attached I/O for every port: 0x00, 0x01 and 0x03 (external), the virtual 0x10, and the internal 0x32, 0x3A, 0x3B, 0x3C and 0x46. Layout and little-endian ioType/revisions match the decoder (ports 0x00/0x01: type 0x0027; 0x03: 0x0025; 0x32: 0x0017 RGB light; 0x3A: 0x0028 tilt; 0x3B: 0x0015 current; 0x3C: 0x0014 voltage). All revisions are valid BCD (`bcd: true`).
+- Internal port 0x46 reports io type **0x0042**, which is not in `IoTypeId`. It decodes with the raw number. None of pylgbst (messages.py:287-297, DevTypes jump 63 to 71), node-poweredup (consts.ts:110-111, 65 to 71) or pybricksdev (bytecodes.py:724-727, 0x3F to 0x4B) defines a device type 0x42 (0x42 there is a hub kind / 0x42 Port Input Format Setup Combined message, unrelated), so it is not added to the constants. Unmodelled, purpose unknown.
+- Hub properties: Enable Updates on Battery (0x06) raised no error; Request Update of Advertising Name returned `0D 00 01 01 06 "Move Hub"` and battery returned `06 00 01 06 06 61` (97 %), both operation Update (0x06).
+- The hub answered the two battery requests (Enable Updates, then Request Update) with two Update messages. It is inconclusive which answered which, so whether Enable Updates produces an immediate Update is still TODO(hw).
 
 ## Unverified on hardware (TODO(hw))
 
@@ -13,21 +25,22 @@ From planning:
 - Move Hub feedback status 0x0A (completed + idle) in Port Output Command Feedback (0x82). No ref has a captured 0x0A vector; the bit meanings (0x02 completed, 0x08 idle) are from doc 3.32.
 - Whether the Move Hub actually sends several (port, flags) pairs in one 0x82 (the format is confirmed, see below; real behaviour is not).
 - `useProfile` handling in motor commands on the Move Hub (the bits are confirmed by node-poweredup, the hub's reaction is not).
-- Virtual port AB id is assigned dynamically (>= 0x10). Read it from the Attached Virtual I/O event (0x02, doc 3.8); never hardcode it. The 0x10 in the StartSpeed2 test vector is a test value only.
+- Virtual port AB id: confirmed dynamic (observed 0x10), see "Confirmed by capture". The 0x10 in the StartSpeed2 test vector is a test value only.
 - Attached I/O message sizes on old firmware.
 - Little-endian assumption for multibyte fields other than versions (the doc only states it for 3.5.6).
 
 Found in code (`rg "TODO\(hw\)" packages`):
 
 - Two-byte length field (messages over 127 bytes): literal from doc 3.2 only; the reference libraries do not cover it (pylgbst and node-poweredup emit one byte).
+- UX: the first tx is at +10.8 s, measured from when the chooser returned the device (hub-probe `startedAt`), so it covers GATT connect + service discovery; the hub may also have stopped advertising just before being chosen (operator unsure). TODO(hw): measure again (other OS, other adapter); long for kids 7+, may need a progress indicator.
 - Write queue per-send timeout (default 1000 ms in `createWriteQueue`): tune on a real hub against the STOP < 200 ms budget.
-- Notification framing: `splitFrames` splits one notification into several frames by length and does not buffer across notifications. TODO(hw): whether the Move Hub ever fragments one message across notifications (node-poweredup assumes not).
-- Web adapter advertisement filter (`WebBleTransport.requestDevice`): filters by the LWP3 service UUID only. TODO(hw): confirm the Move Hub advertises that UUID in its advertisement; if not, the chooser shows nothing and the filter needs `namePrefix` / `manufacturerData` (+ `optionalServices`).
-- Web adapter write mode (`WebBleTransport.write`): uses write-without-response when the characteristic reports it, else write-with-response. TODO(hw): measure which mode the Move Hub supports and the STOP latency in each against the 200 ms budget. There is no retry in the transport by design: a failed write rejects and the hub layer decides.
+- Notification framing: `splitFrames` splits one notification into several frames by length and does not buffer across notifications. TODO(hw): whether the Move Hub ever fragments one message across notifications (node-poweredup assumes not; the first capture saw none, see "Confirmed by capture").
+- Web adapter advertisement filter (`WebBleTransport.requestDevice`): filters by the LWP3 service UUID only. Confirmed by capture that the Move Hub is found this way (see above).
+- Web adapter write mode (`WebBleTransport.write`): uses write-without-response when the characteristic reports it, else write-with-response. Still unknown (the capture log does not record the write mode). TODO(hw): measure which mode the Move Hub supports and the STOP latency in each against the 200 ms budget. There is no retry in the transport by design: a failed write rejects and the hub layer decides.
 - Web adapter write timeout (`writeTimeoutMs`, default 1000 ms): a timed-out write tears the link down (a stalled GATT op would make Chrome refuse the next one as "already in progress"). TODO(hw): (a) tune the timeout against the 200 ms STOP budget, and `urgentDeadlineMs` (default 150 ms): an urgent write enqueued behind a stalled in-flight write declares that write dead after at most that long, which tears the link down so the hub sees a disconnect; (b) does the Move Hub stop its motors by itself when the BLE link drops? If yes, tearing the link down on a stall is also the safest STOP.
 - Version values with non-BCD digits or bit 31 set: decode is lenient (`bcd: false`, raw Int32 kept); real hub behaviour untested.
 - Advertising name longer than 14 bytes: decode tolerates it. Real hubs untested.
-- Hub Attached I/O (0x04): endianness of ioType and revisions is not stated in doc 3.8 (little-endian assumed; pylgbst hub.py:164, node-poweredup lpf2hub.ts:240 and pybricksdev messages.py:516 agree). Unknown ioType values are kept raw, never an error.
+- Hub Attached I/O (0x04): endianness of ioType and revisions is not stated in doc 3.8; little-endian is now confirmed by capture (pylgbst hub.py:164, node-poweredup lpf2hub.ts:240 and pybricksdev messages.py:516 agree). Unknown ioType values are kept raw, never an error.
 - Port Input Format Setup/Format (0x41/0x47): delta interval endianness not stated in doc 3.17/3.23 (LE assumed). Non-zero notify treated as enabled, matching pylgbst/pybricksdev; TODO(hw) confirm hub only sends 0/1.
 - Port Value (Single) (0x45): value endianness not stated in doc 3.21 (LE assumed). Decode keeps `raw` because the size depends on the port mode; `readPortValue` needs the Value Format from Port Mode Information (0x44), not yet modelled.
 - Port Value multi-port (several ports in one 0x45, doc 3.21): out of scope. Decode treats everything after the first port id as that port's `raw`, so a multi-port frame yields mixed bytes. Needs the modes of every port to split.

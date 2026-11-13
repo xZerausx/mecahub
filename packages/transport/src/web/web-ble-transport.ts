@@ -66,8 +66,8 @@ export class WebBleTransport implements BleTransport {
     if (this.current === "connecting" || this.current === "connected") {
       throw new TransportError("gatt", `cannot request a device while ${this.current}`);
     }
-    // TODO(hw): confirm the Move Hub advertises the LWP3 service UUID; otherwise this filter finds
-    // nothing and needs namePrefix / manufacturerData (see docs/protocol-notes.md).
+    // Confirmed by capture (packages/lwp3/fixtures/2026-11-13-move-hub-connect.txt): the Move Hub
+    // advertises the LWP3 service UUID, so this filter finds it (see docs/protocol-notes.md).
     let device: DeviceLike;
     try {
       device = await this.bluetooth.requestDevice({ filters: [{ services: [LWP3_SERVICE_UUID] }] });
