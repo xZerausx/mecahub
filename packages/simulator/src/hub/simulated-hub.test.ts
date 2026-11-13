@@ -7,7 +7,6 @@ import {
   encodeHubProperty,
   encodePortInputFormat,
   encodePortInputFormatSetup,
-  encodePortOutputCommand,
   encodePortValueSingle,
   type Lwp3Message,
 } from "@mecahub/lwp3";
@@ -430,25 +429,6 @@ describe("SimulatedHub unsupported and malformed input", () => {
     hub.receive(encodeFrame(0x7f, Uint8Array.of(1, 2)));
     expect(sent).toEqual([
       encodeGenericError({ commandType: 0x7f, code: ErrorCode.CommandNotRecognized }),
-    ]);
-  });
-
-  it("port output commands are not simulated yet: generic error (the motor model arrives in the next PR)", () => {
-    // supuesto: TODO(hw)
-    const { hub, sent } = connected();
-    hub.receive(
-      encodePortOutputCommand({
-        port: 0,
-        startup: "immediate",
-        completion: "none",
-        command: { sub: "startPower", power: 127 },
-      }),
-    );
-    expect(sent).toEqual([
-      encodeGenericError({
-        commandType: MessageType.PortOutputCommand,
-        code: ErrorCode.CommandNotRecognized,
-      }),
     ]);
   });
 

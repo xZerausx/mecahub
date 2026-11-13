@@ -21,6 +21,8 @@ export interface SimPortConfig {
   readonly hw: Version;
   readonly sw: Version;
   readonly valueFormat?: SimValueFormat;
+  /** Motors only: speed at 100 %, in degrees per second. Default `DEFAULT_MAX_DEG_PER_SEC`. */
+  readonly maxDegPerSec?: number;
 }
 
 /** A virtual port that combines two physical ports (e.g. motors A+B). */
@@ -42,6 +44,19 @@ export interface SimHubConfig {
   readonly hardwareVersion?: Version;
   readonly ports: readonly SimPortConfig[];
   readonly virtualPorts: readonly SimVirtualPortConfig[];
+  /**
+   * Whether the hub stops all motors when the Bluetooth link ends. Default true. supuesto: the
+   * real behaviour is unknown, TODO(hw) (docs/protocol-notes.md, write timeouts). When false the
+   * motors keep ticking after the link is lost until they stop or `SimulatedHub.dispose()`.
+   */
+  readonly stopMotorsOnLinkLoss?: boolean;
+  /**
+   * How long after the link ends the hub notices and reacts to it (stops its motors). Default 0:
+   * at once. supuesto: on real hardware a link that dies silently (a stalled write, no
+   * LL_TERMINATE) may only be noticed after the BLE supervision timeout, seconds later, so link
+   * loss must not be counted on as a fast STOP. TODO(hw)
+   */
+  readonly linkLossDetectionMs?: number;
 }
 
 const v = (major: number, minor: number, bugfix: number, build: number): Version => ({

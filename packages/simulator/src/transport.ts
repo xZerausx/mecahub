@@ -106,7 +106,8 @@ export class SimulatorTransport implements BleTransport {
   /**
    * Detaches from the hub (and drops a live link). Call it when done with a transport whose hub
    * outlives it, so a transport created later over the same hub does not get duplicates. Do not
-   * use the transport afterwards.
+   * use the transport afterwards. The hub is not owned by the transport (it is passed in and may
+   * serve another one), so it is not disposed here: call `hub.dispose()` for that.
    */
   dispose(): void {
     this.unsubscribeHub();

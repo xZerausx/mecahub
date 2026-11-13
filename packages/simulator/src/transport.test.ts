@@ -4,6 +4,7 @@ import {
   decode,
   encodeHubProperty,
   encodePortInputFormatSetup,
+  encodePortOutputCommand,
   splitFrames,
 } from "@mecahub/lwp3";
 import { loadCapture } from "@mecahub/lwp3/testing";
@@ -217,6 +218,27 @@ describe("SimulatorTransport", () => {
     await second.connect();
     expect(secondSeen).toHaveLength(9);
     expect(firstSeen).toEqual([]);
+  });
+
+  it("dispose does not dispose the hub, which the transport does not own", async () => {
+    const clock = new ManualClock();
+    const config = { ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false };
+    const hub = new SimulatedHub(config, { clock });
+    const sim = new SimulatorTransport(hub);
+    await sim.requestDevice();
+    await sim.connect();
+    await sim.write(
+      encodePortOutputCommand({
+        port: 0,
+        startup: "immediate",
+        completion: "none",
+        command: { sub: "startPower", power: 50 },
+      }),
+    );
+    sim.dispose();
+    expect(clock.pending).toBe(1); // the motor still ticks: the hub is the owner's to dispose
+    hub.dispose();
+    expect(clock.pending).toBe(0);
   });
 
   it("dispose drops a live link", async () => {
