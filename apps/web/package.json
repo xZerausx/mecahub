@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mecahub/hub": "workspace:*",
     "@mecahub/lwp3": "workspace:*",
     "@mecahub/transport": "workspace:*",
     "react": "^19.3.1",

@@ -198,6 +198,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@mecahub/hub':
+        specifier: workspace:*
+        version: link:../../packages/hub
       '@mecahub/lwp3':
         specifier: workspace:*
         version: link:../../packages/lwp3
