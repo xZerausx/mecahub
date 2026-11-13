@@ -6,15 +6,15 @@ Node-only code: no browser APIs, no React. All Bluetooth goes through `BleTransp
 
 ## Layers
 
-| Piece                 | Job                                                                                                                                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HubSession`          | Owns the transport. Notification -> `splitFrames` -> `decode` -> typed `SessionEvent`. Decode errors are events, never exceptions. Correlates the request/response pairs below.                     |
-| `PortRegistry`        | What is plugged where, from Hub Attached I/O (0x04). Knows the virtual AB port id (dynamic, 0x10 in the capture) and when the connect burst is over.                                                |
-| `TachoMotor`          | One motor port (A, B, or an external motor on C/D): `run`, `runFor`, `rotate`, `goto`, `brake`, `float`, `onPosition`, `onSpeed`.                                                                   |
-| `TiltSensor`          | The Move Hub's internal tilt sensor (port 0x3A): `onTilt`, `onOrientation`.                                                                                                                         |
-| `ColorDistanceSensor` | The color & distance sensor on C or D: `onColor`, `onDistance`, `onReflectedLight`, `onAmbientLight`, `onColorAndDistance`.                                                                         |
-| `MotorPair`           | The virtual AB port: `run(speedA, speedB)`, `brake`, `float`.                                                                                                                                       |
-| `MoveHub`             | Facade: `connect`, `disconnect`, `motors.a/b/ab`, `tilt`, `portC`, `portD` (a motor or a color & distance sensor, by io type), `onAttach`/`onDetach`, `onDeviceAttach`/`onDeviceDetach`, `stopAll`. |
+| Piece                 | Job                                                                                                                                                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HubSession`          | Owns the transport. Notification -> `splitFrames` -> `decode` -> typed `SessionEvent`. Decode errors are events, never exceptions. Correlates the request/response pairs below.                                                   |
+| `PortRegistry`        | What is plugged where, from Hub Attached I/O (0x04). Knows the virtual AB port id (dynamic, 0x10 in the capture) and when the connect burst is over.                                                                              |
+| `TachoMotor`          | One motor port (A, B, or an external motor on C/D): `run`, `runFor`, `rotate`, `goto`, `brake`, `float`, `onPosition`, `onSpeed`.                                                                                                 |
+| `TiltSensor`          | The Move Hub's internal tilt sensor (port 0x3A): `onTilt`, `onOrientation`.                                                                                                                                                       |
+| `ColorDistanceSensor` | The color & distance sensor on C or D: `onColor`, `onDistance`, `onReflectedLight`, `onAmbientLight`, `onColorAndDistance`.                                                                                                       |
+| `MotorPair`           | The virtual AB port: `run(speedA, speedB)`, `brake`, `float`.                                                                                                                                                                     |
+| `MoveHub`             | Facade: `connect`, `disconnect`, `motors.a/b/ab`, `tilt`, `led`, `button`, `onBattery`, `portC`, `portD` (a motor or a color & distance sensor, by io type), `onAttach`/`onDetach`, `onDeviceAttach`/`onDeviceDetach`, `stopAll`. |
 
 Commands that finish (`runFor`, `rotate`, `goto`) return a promise settled by the hub's Port Output
 Command Feedback (0x82): `"completed"`, or `"discarded"` when another command replaced it (an
@@ -50,6 +50,18 @@ the table) is dropped for the listener and surfaces as a session `unknown-value`
 - `portC` / `portD` give an `AttachedDevice` with `motor` or `colorDistance` set by io type (both
   undefined for any other device). A replug swaps the object. `onDeviceDetach` hands over the same
   handle `onDeviceAttach` gave (already disposed), so match them by identity.
+
+- LED: each call is one direct-mode write (`0x81`, port 0x32, `0x10` immediate/no feedback, `0x51`,
+  mode, data): mode 0 takes a `ColorId` (`None` and `Black` turn it off), mode 1 three RGB bytes. The
+  port mode (0x41, no notifications) is set first, when it changes, as both refs do; the 0x47 reply
+  is not awaited. Calls are written in order. Frames are derived from node-poweredup and pylgbst,
+  never captured: TODO(hw).
+- Button and battery use hub property updates (Enable Updates on the first listener, Disable Updates
+  when the last one leaves; concurrent first subscribers share one Enable Updates write, and if it
+  fails they all reject and the next subscribe retries). A link loss ends the subscription: pass
+  `onDropped` and subscribe again after reconnecting, in `HubButton.onChange` and `MoveHub.onBattery`
+  alike. `HubButton.current()` sends Request
+  Update and rejects `timeout` after 2 s without an answer. `MoveHub.onBattery` reports percent.
 
 ## How STOP works
 

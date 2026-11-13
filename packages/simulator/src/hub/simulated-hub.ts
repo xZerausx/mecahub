@@ -6,8 +6,11 @@ import {
   encodeHubAttachedIo,
   encodeHubProperty,
   encodePortInputFormat,
+  encodePortOutputFeedback,
+  IoTypeId,
   encodePortValueSingle,
   getIoMode,
+  isColorId,
   type HubPropertyName,
   type Lwp3Message,
 } from "@mecahub/lwp3";
@@ -17,6 +20,10 @@ import { MotorBank, type MotorState } from "./motors.js";
 import { defaultModeValue, encodeModeValue, formatOfMode } from "./sensor-modes.js";
 
 export type { MotorState } from "./motors.js";
+
+export type LedState =
+  | { readonly kind: "index"; readonly color: number }
+  | { readonly kind: "rgb"; readonly r: number; readonly g: number; readonly b: number };
 
 export interface SimulatedHubOptions {
   /** Defaults to the real clock. */
@@ -114,6 +121,8 @@ export class SimulatedHub {
   private readonly ioTypes = new Map<number, number>();
   private readonly knownPorts = new Set<number>();
   private readonly formats = new Map<number, SimValueFormat>();
+  private readonly ledListeners = new Set<(led: LedState) => void>();
+  private ledColor: LedState | undefined;
   private readonly motorListeners = new Set<(port: number, state: MotorState) => void>();
   private readonly bank: MotorBank;
   private advertisingName: string;
@@ -233,12 +242,24 @@ export class SimulatedHub {
         this.onInputSetup(msg);
         return;
       case "portOutputCommand":
-        this.bank.command(msg);
+        if (this.ioTypes.get(msg.port) === IoTypeId.RgbLight) this.onLedCommand(msg);
+        else this.bank.command(msg);
         return;
       default:
         // supuesto: TODO(hw) answer 0x05 'command not recognized' (doc 3.9).
         this.error(commandTypeOf(msg), ErrorCode.CommandNotRecognized);
     }
+  }
+
+  /** The color the LED shows, or undefined until an app set one. */
+  get led(): LedState | undefined {
+    return this.ledColor;
+  }
+
+  /** Fires when the app sets the LED. Returns the unsubscribe function. */
+  onLedChange(listener: (led: LedState) => void): () => void {
+    this.ledListeners.add(listener);
+    return () => void this.ledListeners.delete(listener);
   }
 
   /** What a motor port is doing now. Throws RangeError for a port that is not a physical motor. */
@@ -268,6 +289,7 @@ export class SimulatedHub {
     this.subscribed.clear();
     this.inputs.clear();
     this.motorListeners.clear();
+    this.ledListeners.clear();
     this.cancelLossWait();
     this.bank.dispose();
   }
@@ -506,6 +528,44 @@ export class SimulatedHub {
     if (!this.link || !sub?.notify) return;
     const value = this.bank.value(port, sub.mode);
     if (value) this.reportIfChanged(port, sub, value);
+  }
+
+  /**
+   * The hub LED takes direct mode data only: mode 0 = one color index byte (a color table id, 255
+   * included), mode 1 = three rgb bytes (lwp3 mode table, 'derivado del layout'). Anything else is
+   * answered 0x05 invalid use and leaves the color alone. A command that asked for completion feedback
+   * is answered like the motor commands that run until replaced: 0x82 in-progress (0x01) then
+   * completed+idle (0x0A). supuesto: TODO(hw) the real hub's reaction and its feedback.
+   */
+  private onLedCommand(msg: Extract<Lwp3Message, { type: "portOutputCommand" }>): void {
+    const c = msg.command;
+    let next: LedState | undefined;
+    if (c.sub === "writeDirectModeData") {
+      const [a, g, b] = c.data;
+      if (c.mode === 0 && c.data.length === 1 && a !== undefined && isColorId(a)) {
+        next = { kind: "index", color: a };
+      } else if (c.mode === 1 && c.data.length === 3) {
+        next = { kind: "rgb", r: a as number, g: g as number, b: b as number };
+      }
+    }
+    if (!next) {
+      this.error(MessageType.PortOutputCommand, ErrorCode.InvalidUse);
+      return;
+    }
+    this.ledColor = next;
+    if (msg.completion === "feedback") {
+      this.emit(encodePortOutputFeedback({ ports: [{ port: msg.port, flags: 0x01 }] }));
+      this.emit(encodePortOutputFeedback({ ports: [{ port: msg.port, flags: 0x0a }] }));
+    }
+    for (const listener of [...this.ledListeners]) {
+      try {
+        listener(next);
+      } catch (err) {
+        queueMicrotask(() => {
+          throw err;
+        });
+      }
+    }
   }
 
   private error(commandType: number, code: number): void {

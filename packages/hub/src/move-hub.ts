@@ -6,6 +6,10 @@ import { MoveHubPort, PortRegistry } from "./registry.js";
 import type { PhysicalDevice, PortDevice, PortRegistryOptions } from "./registry.js";
 import { HubSession } from "./session.js";
 import type { HubSessionOptions } from "./session.js";
+import { PropertySubscription } from "./property-subscription.js";
+import type { PropertySubscribeOptions } from "./property-subscription.js";
+import { HubButton } from "./hub-button.js";
+import { HubLed } from "./hub-led.js";
 import { ColorDistanceSensor } from "./color-distance-sensor.js";
 import { TachoMotor } from "./tacho-motor.js";
 import { TiltSensor } from "./tilt-sensor.js";
@@ -51,6 +55,9 @@ export class MoveHub {
   };
 
   readonly tilt: TiltSensor;
+  readonly led: HubLed;
+  readonly button: HubButton;
+  private readonly battery: PropertySubscription<"batteryPercent">;
   private readonly external = new Map<number, TachoMotor | ColorDistanceSensor>();
   private pair: MotorPair | undefined;
   private readonly offRegistry: (() => void)[] = [];
@@ -67,6 +74,9 @@ export class MoveHub {
     const a = new TachoMotor(this.session, MoveHubPort.A, IoTypeId.InternalMotorWithTacho);
     const b = new TachoMotor(this.session, MoveHubPort.B, IoTypeId.InternalMotorWithTacho);
     this.tilt = new TiltSensor(this.session, MoveHubPort.Tilt);
+    this.led = new HubLed(this.session, MoveHubPort.Led);
+    this.button = new HubButton(this.session);
+    this.battery = new PropertySubscription(this.session, "batteryPercent");
     const pairFor = () => this.pairFor();
     this.motors = {
       a,
@@ -166,6 +176,19 @@ export class MoveHub {
     return () => void this.stopFailedListeners.delete(listener);
   }
 
+  /**
+   * Battery level in percent (hub property 0x06, "Battery Voltage" in the doc but a percentage).
+   * Enables updates on the first listener and disables them when the last one leaves. A link loss
+   * ends the subscription:
+   * `onDropped` tells the app, which must subscribe again after reconnecting.
+   */
+  onBattery(
+    listener: (percent: number) => void,
+    options: PropertySubscribeOptions = {},
+  ): Promise<() => void> {
+    return this.battery.subscribe(listener, options);
+  }
+
   /** Fires for every attached device (see `PortRegistry.onAttach`). */
   onAttach(listener: (device: PortDevice) => void): () => void {
     return this.registry.onAttach(listener);
@@ -199,6 +222,9 @@ export class MoveHub {
     this.motors.a.dispose();
     this.motors.b.dispose();
     this.tilt.dispose();
+    this.led.dispose();
+    this.button.dispose();
+    this.battery.dispose();
     for (const m of this.external.values()) m.dispose();
     this.stopFailedListeners.clear();
     this.deviceAttachListeners.clear();

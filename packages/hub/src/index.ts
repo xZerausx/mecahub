@@ -15,3 +15,6 @@ export { TiltSensor } from "./tilt-sensor.js";
 export type { Tilt } from "./tilt-sensor.js";
 export { ColorDistanceSensor } from "./color-distance-sensor.js";
 export type { ColorAndDistance } from "./color-distance-sensor.js";
+export { HubLed } from "./hub-led.js";
+export { HubButton } from "./hub-button.js";
+export type { PropertySubscribeOptions } from "./property-subscription.js";
