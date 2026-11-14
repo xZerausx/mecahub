@@ -1,9 +1,10 @@
 import { FakeTransport } from "@mecahub/transport";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import en from "../../../../../content/i18n/en.json";
-import es from "../../../../../content/i18n/es.json";
-import { createTranslator, type MessageKey, type Translate } from "../../i18n.js";
+import en from "../../../../../content/i18n/dev.en.json";
+import es from "../../../../../content/i18n/dev.es.json";
+import type { MessageKey, Translate } from "../../i18n.js";
+import { createDevTranslator } from "../dev-i18n.js";
 import { LabPage } from "./LabPage.js";
 import { needsLeaveGuard } from "./lab-ui.js";
 import { createLabController, type LabControllerOptions } from "./lab-controller.js";
@@ -35,7 +36,7 @@ afterEach(() => {
 const noop = () => undefined;
 const copy = () => Promise.resolve();
 
-const render = (controller: LabController, t: Translate = createTranslator("en")) =>
+const render = (controller: LabController, t: Translate = createDevTranslator("en")) =>
   renderToString(<LabPage controller={controller} t={t} copy={copy} save={noop} />);
 
 describe("LabPage", () => {
@@ -66,7 +67,7 @@ describe("LabPage", () => {
   });
 
   it("renders in Spanish", () => {
-    const html = render(lab(), createTranslator("es"));
+    const html = render(lab(), createDevTranslator("es"));
     expect(html).toContain(es["dev.lab.title"]);
     expect(html).toContain(es["dev.lab.connect"]);
     expect(html).not.toContain(en["dev.lab.connection.heading"]);
@@ -243,7 +244,7 @@ describe("LabPage", () => {
   it("takes every visible string and label from i18n", async () => {
     // A translator that wraps each message: any text or label outside the markers is hardcoded.
     const marked: Translate = (key: MessageKey, params) =>
-      `§${createTranslator("en")(key, params)}§`;
+      `§${createDevTranslator("en")(key, params)}§`;
     for (const controller of [lab(), await connected()]) {
       const html = render(controller, marked);
       // The hub's own name is data, not UI copy.

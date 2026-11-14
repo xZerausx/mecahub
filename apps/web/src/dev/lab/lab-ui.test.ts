@@ -11,8 +11,8 @@ import {
   labErrorKey,
   needsLeaveGuard,
 } from "./lab-ui.js";
-import en from "../../../../../content/i18n/en.json";
-import es from "../../../../../content/i18n/es.json";
+import en from "../../../../../content/i18n/dev.en.json";
+import es from "../../../../../content/i18n/dev.es.json";
 
 const snapshot = (patch: Partial<LabSnapshot> = {}): LabSnapshot => ({
   mode: "simulator",

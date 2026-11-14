@@ -1,6 +1,6 @@
 import { TransportError, TransportErrorCode } from "@mecahub/transport";
 import { describe, expect, it } from "vitest";
-import en from "../../../../content/i18n/en.json";
+import en from "../../../../content/i18n/dev.en.json";
 import { errorKey } from "./error-key.js";
 
 describe("errorKey", () => {
