@@ -18,7 +18,7 @@ First real Move Hub capture, 2026-11-13 (Web Bluetooth; Chrome on Linux/BlueZ pe
 
 ## Unverified on hardware (TODO(hw))
 
-Everything here comes from the docs or from other libraries, not from a real Move Hub. When a capture contradicts it, the capture wins (see ADR 0002).
+Everything here comes from the docs or from other libraries, not from a real Move Hub. When a capture contradicts it, the capture wins (see ADR 0002). The lab page (README, "Lab page") has a tool or a readout for each open item of the hardware session.
 
 From planning:
 

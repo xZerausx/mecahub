@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createTranslator, detectLocale } from "../i18n.js";
+import { createDevTranslator } from "./dev-i18n.js";
+import { detectLocale } from "../i18n.js";
 import { SimulatorPage } from "./SimulatorPage.js";
 import { createSimController } from "./sim-controller.js";
 import "./connect.css";
@@ -10,7 +11,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");
 
 const locale = detectLocale(navigator.language);
-const t = createTranslator(locale);
+const t = createDevTranslator(locale);
 document.documentElement.lang = locale;
 document.title = t("dev.sim.title");
 const controller = createSimController();

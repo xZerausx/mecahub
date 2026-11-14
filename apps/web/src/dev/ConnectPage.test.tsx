@@ -2,9 +2,9 @@ import { encodeHubProperty } from "@mecahub/lwp3";
 import { FakeTransport } from "@mecahub/transport";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import en from "../../../../content/i18n/en.json";
-import es from "../../../../content/i18n/es.json";
-import { createTranslator } from "../i18n.js";
+import en from "../../../../content/i18n/dev.en.json";
+import es from "../../../../content/i18n/dev.es.json";
+import { createDevTranslator } from "./dev-i18n.js";
 import { ConnectPage } from "./ConnectPage.js";
 import { createHubProbe } from "./hub-probe.js";
 
@@ -14,7 +14,7 @@ describe("ConnectPage", () => {
   it("renders the idle page from i18n", () => {
     const probe = createHubProbe(new FakeTransport());
     const html = renderToString(
-      <ConnectPage probe={probe} t={createTranslator("en")} copy={copy} />,
+      <ConnectPage probe={probe} t={createDevTranslator("en")} copy={copy} />,
     );
     for (const key of [
       "dev.connect.title",
@@ -30,14 +30,14 @@ describe("ConnectPage", () => {
   it("renders in Spanish", () => {
     const probe = createHubProbe(new FakeTransport());
     const html = renderToString(
-      <ConnectPage probe={probe} t={createTranslator("es")} copy={copy} />,
+      <ConnectPage probe={probe} t={createDevTranslator("es")} copy={copy} />,
     );
     expect(html).toContain(es["dev.connect.connect"]);
   });
 
   it("shows the browser help when Web Bluetooth is unavailable", () => {
     const html = renderToString(
-      <ConnectPage probe={undefined} t={createTranslator("en")} copy={copy} />,
+      <ConnectPage probe={undefined} t={createDevTranslator("en")} copy={copy} />,
     );
     expect(html).toContain(en["dev.connect.unsupported"]);
     expect(html).toContain("chrome://flags/#enable-experimental-web-platform-features");
@@ -65,7 +65,7 @@ describe("ConnectPage", () => {
       }),
     );
     const html = renderToString(
-      <ConnectPage probe={probe} t={createTranslator("en")} copy={copy} />,
+      <ConnectPage probe={probe} t={createDevTranslator("en")} copy={copy} />,
     );
     expect(html).toContain("Move Hub");
     expect(html).toContain("87%");
@@ -75,7 +75,7 @@ describe("ConnectPage", () => {
   it("announces state changes politely and labels the log by its heading", () => {
     const probe = createHubProbe(new FakeTransport());
     const html = renderToString(
-      <ConnectPage probe={probe} t={createTranslator("en")} copy={copy} />,
+      <ConnectPage probe={probe} t={createDevTranslator("en")} copy={copy} />,
     );
     expect(html).toContain('aria-live="polite"');
     const labelledby = /<pre[^>]*aria-labelledby="([^"]+)"/.exec(html)?.[1];
@@ -89,7 +89,7 @@ describe("ConnectPage", () => {
     const probe = createHubProbe(transport);
     void probe.connect();
     const html = renderToString(
-      <ConnectPage probe={probe} t={createTranslator("en")} copy={copy} />,
+      <ConnectPage probe={probe} t={createDevTranslator("en")} copy={copy} />,
     );
     expect(html).toContain(en["dev.connect.state.choosing"]);
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Connect<\/button>/);
@@ -108,7 +108,7 @@ describe("ConnectPage", () => {
       }),
     );
     const render = () =>
-      renderToString(<ConnectPage probe={probe} t={createTranslator("en")} copy={copy} />);
+      renderToString(<ConnectPage probe={probe} t={createDevTranslator("en")} copy={copy} />);
     expect(render()).not.toContain(en["dev.connect.lastKnown"]);
     transport.emitDisconnect();
     const html = render();

@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "typecheck": "pnpm -r --if-present typecheck",
     "dev": "pnpm --filter @mecahub/web dev",
-    "sim": "pnpm --filter @mecahub/web dev --open /dev/simulator.html"
+    "sim": "pnpm --filter @mecahub/web dev --open /dev/simulator.html",
+    "lab": "pnpm --filter @mecahub/web dev --open /dev/lab.html"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

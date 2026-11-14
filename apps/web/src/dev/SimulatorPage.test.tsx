@@ -1,9 +1,9 @@
 import { ManualClock, defaultMoveHubConfig, type SimPortConfig } from "@mecahub/simulator";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import en from "../../../../content/i18n/en.json";
-import es from "../../../../content/i18n/es.json";
-import { createTranslator } from "../i18n.js";
+import en from "../../../../content/i18n/dev.en.json";
+import es from "../../../../content/i18n/dev.es.json";
+import { createDevTranslator } from "./dev-i18n.js";
 import { SimulatorPage } from "./SimulatorPage.js";
 import { createSimController } from "./sim-controller.js";
 
@@ -12,7 +12,7 @@ const render = (locale: "en" | "es") =>
   renderToString(
     <SimulatorPage
       controller={createSimController({ clock: new ManualClock() })}
-      t={createTranslator(locale)}
+      t={createDevTranslator(locale)}
       copy={copy}
     />,
   );
@@ -79,7 +79,7 @@ describe("SimulatorPage", () => {
     const controller = createSimController({ clock: new ManualClock() });
     await controller.stop(); // not connected: the write fails
     const html = renderToString(
-      <SimulatorPage controller={controller} t={createTranslator("en")} copy={copy} />,
+      <SimulatorPage controller={controller} t={createDevTranslator("en")} copy={copy} />,
     );
     expect(html).toContain(en["dev.sim.stopFailed"]);
     expect(html).not.toContain(en["dev.sim.stopPending"]);
@@ -96,7 +96,7 @@ describe("SimulatorPage", () => {
             ports: [...base.ports, { ...(base.ports[0] as SimPortConfig), port: 2 }],
           },
         })}
-        t={createTranslator("en")}
+        t={createDevTranslator("en")}
         copy={copy}
       />,
     );
