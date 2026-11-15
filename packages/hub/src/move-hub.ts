@@ -1,4 +1,4 @@
-import { IoTypeId, encodePortOutputCommand } from "@mecahub/lwp3";
+import { IoTypeId, encodeHubProperty, encodePortOutputCommand } from "@mecahub/lwp3";
 import type { BleTransport } from "@mecahub/transport";
 import { fire } from "./listeners.js";
 import { MotorPair } from "./motor-pair.js";
@@ -102,13 +102,23 @@ export class MoveHub {
 
   /**
    * Picks the device (web: opens the chooser, which needs a user gesture), connects, and resolves
-   * once the hub announced its ports. Resolves at once if already connected. If the hub announces
+   * once the hub announced its ports. Writes first (a firmware version request): the hub announces
+   * nothing until the app speaks. Resolves at once if already connected. If the hub announces
    * nothing the link is dropped and this rejects "timeout".
    */
   async connect(): Promise<void> {
     if (this.transport.state === "idle") await this.transport.requestDevice();
     await this.transport.connect();
     try {
+      // The hub stays silent until the app writes (supuesto from the 2026-11-13 and 2026-11-15
+      // captures, TODO(hw)): speak first, with a harmless read, so it announces its ports.
+      await this.session.send(
+        encodeHubProperty({
+          type: "hubProperty",
+          operation: "requestUpdate",
+          property: "firmwareVersion",
+        }),
+      );
       await this.registry.whenReady();
     } catch (err) {
       await this.transport.disconnect();

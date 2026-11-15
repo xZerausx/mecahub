@@ -73,6 +73,7 @@ describe("RecordingTransport", () => {
     const off = rec.onNotify((b) => seen.push(b.length));
     await rec.requestDevice();
     await rec.connect();
+    await rec.write(BATTERY_REQUEST);
     expect(seen.length).toBeGreaterThan(0);
     off();
     close();

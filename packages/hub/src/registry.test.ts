@@ -1,4 +1,4 @@
-import { encodeHubAttachedIo } from "@mecahub/lwp3";
+import { encodeHubAttachedIo, encodeHubProperty } from "@mecahub/lwp3";
 import type { HubAttachedIoMessage, Version } from "@mecahub/lwp3";
 import { SimulatedHub, SimulatorTransport, defaultMoveHubConfig } from "@mecahub/simulator";
 import { FakeTransport } from "@mecahub/transport";
@@ -238,6 +238,14 @@ describe("PortRegistry over the simulated hub (main path)", () => {
     const registry = new PortRegistry(session, { readyQuietMs: 100 });
     await sim.requestDevice();
     await sim.connect();
+    // The hub announces once the app speaks (simulator default, see docs/protocol-notes.md).
+    await session.send(
+      encodeHubProperty({
+        type: "hubProperty",
+        operation: "requestUpdate",
+        property: "firmwareVersion",
+      }),
+    );
     expect(registry.ready).toBe(false);
     await vi.advanceTimersByTimeAsync(100);
     expect(registry.ready).toBe(true);
