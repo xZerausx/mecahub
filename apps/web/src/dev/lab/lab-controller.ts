@@ -106,12 +106,14 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
   const date = options.date ?? (() => new Date());
   const webBluetoothAvailable = options.webBluetoothAvailable ?? false;
   const listeners = new Set<() => void>();
+  let previousCapture: string | undefined;
 
   const empty = (mode: LabMode): LabSnapshot => ({
     mode,
     webBluetoothAvailable,
     connection: "idle",
     ready: false,
+    hasPreviousCapture: false,
     timings: {},
     hubName: undefined,
     firmware: undefined,
@@ -442,6 +444,11 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     try {
       const device = await chosen;
       chosenAt = now();
+      // A new session wipes the recorder: keep the one that just ended (evidence of a drop).
+      if (recorder.entries().length > 0) {
+        previousCapture = exportCapture();
+        publish({ hasPreviousCapture: true });
+      }
       recorder.clear();
       recorder.startClock();
       publish({
@@ -809,6 +816,8 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     return [...header, ...truncated, ...body, ...results, ""].join("\n");
   };
 
+  const exportPreviousCapture = (): string | undefined => previousCapture;
+
   const exportJson = (): string =>
     JSON.stringify(
       {
@@ -884,6 +893,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       return runTool("feedback", (ctx) => captureFeedback(ctx, portNumber));
     },
     exportCapture,
+    exportPreviousCapture,
     exportJson,
     get sim() {
       return sim;

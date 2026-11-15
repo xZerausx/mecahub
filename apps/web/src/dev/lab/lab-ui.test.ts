@@ -19,6 +19,7 @@ const snapshot = (patch: Partial<LabSnapshot> = {}): LabSnapshot => ({
   webBluetoothAvailable: false,
   connection: "connected",
   ready: true,
+  hasPreviousCapture: false,
   timings: {},
   hubName: undefined,
   firmware: undefined,

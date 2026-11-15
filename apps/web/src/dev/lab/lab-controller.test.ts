@@ -154,6 +154,43 @@ describe("connecting", () => {
   });
 });
 
+describe("previous session", () => {
+  it("keeps the capture of the session that ended when the user connects again", async () => {
+    const c = await connected();
+    expect(c.getSnapshot().hasPreviousCapture).toBe(false);
+    expect(c.exportPreviousCapture()).toBeUndefined();
+    await c.run("a", 50);
+    c.sim?.transport.dropLink();
+    await settle();
+    const ended = c.exportCapture();
+    expect(ended).toContain("link lost");
+
+    const again = c.connect();
+    await settle(3000);
+    await again;
+    await settle();
+
+    expect(c.getSnapshot().hasPreviousCapture).toBe(true);
+    expect(c.exportPreviousCapture()).toBe(ended);
+    // The current capture is only the new session: the drop of the old one is not in it.
+    expect(c.exportCapture()).not.toContain("link lost");
+  });
+
+  it("keeps only the last ended session", async () => {
+    const c = await connected();
+    for (let i = 0; i < 2; i++) {
+      c.sim?.transport.dropLink();
+      await settle();
+      const again = c.connect();
+      await settle(3000);
+      await again;
+      await settle();
+    }
+    const previous = c.exportPreviousCapture() ?? "";
+    expect(previous.match(/^# mecahub lab capture$/gm)).toHaveLength(1);
+  });
+});
+
 describe("readings", () => {
   it("shows battery, button, tilt and color and distance", async () => {
     const c = await connected();
