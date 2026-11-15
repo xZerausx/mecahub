@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
 import { defaultMoveHubConfig, type SimHubConfig } from "./config.js";
 import { SimulatedHub } from "./simulated-hub.js";
+import { connectAndSpeak } from "../test-support/link.js";
 
 // Vectors are 'derivado del layout': built from the lwp3 mode table (io-modes.ts, itself derived
 // from pylgbst and node-poweredup); no 0x45 value has been captured on a real hub. TODO(hw)
@@ -24,7 +25,7 @@ function connected(config: SimHubConfig = defaultMoveHubConfig()) {
   const hub = new SimulatedHub(config, { clock: new ManualClock() });
   const sent: Uint8Array[] = [];
   hub.onSend((f) => sent.push(f));
-  hub.connect();
+  connectAndSpeak(hub);
   sent.length = 0;
   return { hub, sent };
 }

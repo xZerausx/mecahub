@@ -24,10 +24,15 @@ const requestBattery = encodeHubProperty({
 
 function make(latencyMs?: number) {
   const clock = new ManualClock();
-  const hub = new SimulatedHub(defaultMoveHubConfig(), {
-    clock,
-    ...(latencyMs === undefined ? {} : { latencyMs }),
-  });
+  // These tests are about the transport, so the hub announces at connect (not the default,
+  // "firstMessage", which has its own test below).
+  const hub = new SimulatedHub(
+    { ...defaultMoveHubConfig(), announcePortsOn: "connect" },
+    {
+      clock,
+      ...(latencyMs === undefined ? {} : { latencyMs }),
+    },
+  );
   const sim = new SimulatorTransport(hub);
   const notifications: Uint8Array[] = [];
   sim.onNotify((bytes) => notifications.push(bytes));
@@ -70,6 +75,20 @@ describe("SimulatorTransport", () => {
     const { notifications } = await connected();
     const burst = capture.filter((f) => f.dir === "rx" && f.bytes[2] === MessageType.HubAttachedIo);
     expect(notifications).toEqual(burst.map((f) => f.bytes));
+  });
+
+  it("with the default hub, the burst comes with the first write, before its answer", async () => {
+    const sim = new SimulatorTransport(new SimulatedHub());
+    const notifications: Uint8Array[] = [];
+    sim.onNotify((bytes) => notifications.push(bytes));
+    await sim.requestDevice();
+    await sim.connect();
+    expect(notifications).toEqual([]);
+    await sim.write(requestBattery);
+    expect(notifications.map((f) => f[2])).toEqual([
+      ...Array<number>(9).fill(MessageType.HubAttachedIo),
+      MessageType.HubProperties,
+    ]);
   });
 
   it("a write reaches the hub and its answer comes back as a notification", async () => {
@@ -242,7 +261,8 @@ describe("SimulatorTransport", () => {
     second.onNotify((x) => secondSeen.push(x));
     await second.requestDevice();
     await second.connect();
-    expect(secondSeen).toHaveLength(9);
+    await second.write(requestBattery);
+    expect(secondSeen).toHaveLength(10); // the burst, then the battery
     expect(firstSeen).toEqual([]);
   });
 

@@ -36,10 +36,13 @@ export async function startSim(
   const connecting = moveHub.connect();
   await vi.advanceTimersByTimeAsync(300);
   await connecting;
+  // What connect() wrote; tests then see only their own frames.
+  const connectFrames = sim.sentFrames.splice(0);
   return {
     hub,
     sim,
     moveHub,
+    connectFrames,
     close() {
       moveHub.dispose();
       sim.dispose();

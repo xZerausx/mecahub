@@ -43,6 +43,16 @@ describe("MoveHub: connection and ports", () => {
     close();
   });
 
+  it("connect() speaks first: asks the firmware version, then the silent hub announces", async () => {
+    // The simulator's default (announcePortsOn "firstMessage") is the hub seen in the 2026-11-13 and
+    // 2026-11-15 captures: no attached IO until the app writes (supuesto, TODO(hw)).
+    // derivado del layout (doc 3.5): Hub Properties, firmware version 0x03, Request Update 0x05.
+    const { connectFrames, moveHub, close } = await startSim();
+    expect(connectFrames).toEqual([Uint8Array.of(0x05, 0x00, 0x01, 0x03, 0x05)]);
+    expect(moveHub.registry.ready).toBe(true);
+    close();
+  });
+
   it("exposes motors A and B, the pair, and C/D as devices or undefined", async () => {
     const { moveHub, close } = await startSim();
     expect(moveHub.motors.a.port).toBe(0x00);

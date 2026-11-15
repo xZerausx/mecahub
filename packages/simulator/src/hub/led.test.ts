@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
 import { defaultMoveHubConfig } from "./config.js";
 import { SimulatedHub } from "./simulated-hub.js";
+import { connectAndSpeak } from "../test-support/link.js";
 
 // Vector origin: 'derivado del layout' (not captured: TODO(hw)). The frames are the direct-mode write
 // both refs send to the hub LED: 0x81, port, startup/completion, 0x51, mode, data (node-poweredup
@@ -24,7 +25,7 @@ function connected() {
   const hub = new SimulatedHub(defaultMoveHubConfig(), { clock: new ManualClock() });
   const sent: Uint8Array[] = [];
   hub.onSend((f) => sent.push(f));
-  hub.connect();
+  connectAndSpeak(hub);
   sent.length = 0;
   return { hub, sent };
 }
