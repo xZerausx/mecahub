@@ -305,7 +305,14 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     linkEpoch++;
     linkOffs = [];
     portOffs = new Map();
-    publish({ connection: "disconnected", ready: false });
+    // The next connect wipes the recorder: keep this session now (evidence of a drop), dated
+    // when it ended. A failed connect counts too (the hub may have said nothing).
+    if (recorder.entries().length > 0) previousCapture = exportCapture(["# previous session"]);
+    publish({
+      connection: "disconnected",
+      ready: false,
+      hasPreviousCapture: previousCapture !== undefined,
+    });
   };
 
   const build = (mode: LabMode): void => {
@@ -444,11 +451,6 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     try {
       const device = await chosen;
       chosenAt = now();
-      // A new session wipes the recorder: keep the one that just ended (evidence of a drop).
-      if (recorder.entries().length > 0) {
-        previousCapture = exportCapture();
-        publish({ hasPreviousCapture: true });
-      }
       recorder.clear();
       recorder.startClock();
       publish({
@@ -787,7 +789,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
 
   // --- export ---
 
-  const exportCapture = (): string => {
+  const exportCapture = (notes: readonly string[] = []): string => {
     const origin =
       snapshot.mode === "real"
         ? "# origin: capturado (real hub, Web Bluetooth)"
@@ -798,6 +800,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       `# date: ${date().toISOString()}`,
       `# hub name: ${snapshot.hubName ?? "unknown"}`,
       `# firmware: ${snapshot.firmware ?? "unknown"}`,
+      ...notes,
       FORMAT_LINE,
     ];
     const truncated =
@@ -843,6 +846,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
     if (mode === snapshot.mode) return;
     teardown();
     build(mode);
+    previousCapture = undefined;
     snapshot = { ...empty(mode) };
     for (const listener of [...listeners]) listener();
   };
@@ -892,7 +896,7 @@ export function createLabController(options: LabControllerOptions = {}): LabCont
       const portNumber = requireMotor(options.port ?? "a");
       return runTool("feedback", (ctx) => captureFeedback(ctx, portNumber));
     },
-    exportCapture,
+    exportCapture: () => exportCapture(),
     exportPreviousCapture,
     exportJson,
     get sim() {

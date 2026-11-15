@@ -198,7 +198,8 @@ describe("capture 2026-11-15 (lab session): rx frames", () => {
     expect(
       pos(
         b,
-        frames.findIndex((f) => f.at > 46500),
+        // up to the next tool's first write (the motor had stopped by then)
+        frames.findIndex((f, i) => i > b && f.dir === "tx"),
       ),
     ).toBe(831);
   });

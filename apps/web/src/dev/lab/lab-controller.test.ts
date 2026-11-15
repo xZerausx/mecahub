@@ -171,9 +171,37 @@ describe("previous session", () => {
     await settle();
 
     expect(c.getSnapshot().hasPreviousCapture).toBe(true);
-    expect(c.exportPreviousCapture()).toBe(ended);
+    expect(c.exportPreviousCapture()?.replace("# previous session\n", "")).toBe(ended);
     // The current capture is only the new session: the drop of the old one is not in it.
     expect(c.exportCapture()).not.toContain("link lost");
+  });
+
+  it("dates the previous session when its link ended, not at the next connect, and says so", async () => {
+    let clockDate = new Date("2026-11-20T10:00:00.000Z");
+    const c = await connected({ date: () => clockDate });
+    c.sim?.transport.dropLink();
+    await settle();
+    clockDate = new Date("2026-11-20T10:30:00.000Z");
+    const again = c.connect();
+    await settle(3000);
+    await again;
+    const previous = c.exportPreviousCapture() ?? "";
+    expect(previous).toContain("# date: 2026-11-20T10:00:00.000Z");
+    expect(previous).toContain("# previous session");
+  });
+
+  it("switching mode forgets the previous session", async () => {
+    const c = await connected({
+      webBluetoothAvailable: true,
+      createRealTransport: () => new FakeTransport(),
+      mode: "simulator",
+    });
+    c.sim?.transport.dropLink();
+    await settle();
+    expect(c.getSnapshot().hasPreviousCapture).toBe(true);
+    c.setMode("real");
+    expect(c.getSnapshot().hasPreviousCapture).toBe(false);
+    expect(c.exportPreviousCapture()).toBeUndefined();
   });
 
   it("keeps only the last ended session", async () => {
