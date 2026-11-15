@@ -58,6 +58,12 @@ export interface SimHubConfig {
    * loss must not be counted on as a fast STOP. TODO(hw)
    */
   readonly linkLossDetectionMs?: number;
+  /**
+   * When the hub announces its attached devices. Default "firstMessage": the link comes up silent
+   * and the burst goes out when the app's first message arrives, before its reply. supuesto,
+   * derived from the 2026-11-13 and 2026-11-15 captures (docs/protocol-notes.md), TODO(hw).
+   */
+  readonly announcePortsOn?: "connect" | "firstMessage";
 }
 
 const v = (major: number, minor: number, bugfix: number, build: number): Version => ({

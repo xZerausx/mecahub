@@ -129,6 +129,8 @@ export class SimulatedHub {
   private battery: number;
   private button: boolean;
   private link = false;
+  /** The attached-IO burst of the current link is still owed (`announcePortsOn`). */
+  private announcePending = false;
   /** The pending reaction to a link loss (`linkLossDetectionMs`). */
   private lossTimer: SimTimerHandle | undefined;
 
@@ -171,14 +173,25 @@ export class SimulatedHub {
   }
 
   /**
-   * The app connected: announces what is attached. capturado: order 0x00, 0x01, 0x03, virtual
-   * 0x10, then the internal devices 0x32, 0x3A, 0x3B, 0x3C, 0x46 (externals, virtual, internals).
+   * The app connected. The attached-IO burst goes out now or with the app's first message
+   * (`announcePortsOn`).
    */
   connect(): void {
     if (this.link) return;
     this.link = true;
     // supuesto: a new link before the old loss was noticed: the hub never reacts to the old one
     this.cancelLossWait();
+    this.announcePending = true;
+    if ((this.config.announcePortsOn ?? "firstMessage") === "connect") this.announce();
+  }
+
+  /**
+   * Announces what is attached, once per link. capturado: order 0x00, 0x01, 0x03, virtual 0x10,
+   * then the internal devices 0x32, 0x3A, 0x3B, 0x3C, 0x46 (externals, virtual, internals).
+   */
+  private announce(): void {
+    if (!this.announcePending) return;
+    this.announcePending = false;
     const { ports, virtualPorts } = this.config;
     const external = ports.filter((p) => p.port <= LAST_EXTERNAL_PORT);
     const internal = ports.filter((p) => p.port > LAST_EXTERNAL_PORT);
@@ -205,6 +218,7 @@ export class SimulatedHub {
     // Nothing to lose when there is no link: a second call must not re-arm the loss reaction.
     if (!this.link) return;
     this.link = false;
+    this.announcePending = false;
     // supuesto: TODO(hw) does the real hub stop its motors when the link drops?
     if (this.config.stopMotorsOnLinkLoss ?? true) {
       const wait = this.config.linkLossDetectionMs ?? 0;
@@ -232,6 +246,7 @@ export class SimulatedHub {
   /** App to hub: one LWP3 message. Ignored while not connected. Never throws. */
   receive(frame: Uint8Array): void {
     if (!this.link) return;
+    this.announce();
     const msg = decode(frame);
     if ("kind" in msg) return;
     switch (msg.type) {

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
 import { defaultMoveHubConfig, type SimHubConfig } from "./config.js";
 import { SimulatedHub } from "./simulated-hub.js";
+import { connectAndSpeak } from "../test-support/link.js";
 
 const A = 0x00;
 const B = 0x01;
@@ -37,7 +38,7 @@ function connected(config: SimHubConfig = defaultMoveHubConfig()) {
   const hub = new SimulatedHub(config, { clock });
   const sent: Uint8Array[] = [];
   hub.onSend((f) => sent.push(f));
-  hub.connect();
+  connectAndSpeak(hub);
   sent.length = 0;
   const msgs = (): (Lwp3Message | { kind: "error" })[] => sent.splice(0).map((f) => decode(f));
   const send = (port: number, command: Command, startup?: "buffer" | "immediate") =>
@@ -358,7 +359,7 @@ describe("dispose", () => {
     const hub = new SimulatedHub(defaultMoveHubConfig(), { clock, latencyMs: 50 });
     const sent: Uint8Array[] = [];
     hub.onSend((f) => sent.push(f));
-    hub.connect();
+    connectAndSpeak(hub);
     expect(clock.pending).toBeGreaterThan(0);
     hub.dispose();
     expect(clock.pending).toBe(0);

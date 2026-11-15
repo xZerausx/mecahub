@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
 import { defaultMoveHubConfig, type SimHubConfig } from "./config.js";
 import { SimulatedHub } from "./simulated-hub.js";
+import { connectAndSpeak } from "../test-support/link.js";
 
 const capture = loadCapture("2026-11-13-move-hub-connect.txt");
 const captureRx = capture.filter((f) => f.dir === "rx");
@@ -38,7 +39,7 @@ function setup(config: SimHubConfig = defaultMoveHubConfig(), latencyMs?: number
 }
 function connected(config?: SimHubConfig, latencyMs?: number) {
   const s = setup(config, latencyMs);
-  s.hub.connect();
+  connectAndSpeak(s.hub);
   s.clock.advance(1000);
   s.sent.length = 0;
   return s;
@@ -72,9 +73,33 @@ describe("defaultMoveHubConfig", () => {
 });
 
 describe("SimulatedHub connect/disconnect", () => {
-  it("connect emits the attached-IO burst: same frames, same order as the capture", () => {
-    // capturado: fixtures/2026-11-13-move-hub-connect.txt (order 00, 01, 03, 10, 32, 3A, 3B, 3C, 46)
+  it("stays silent after connect until the app sends its first message", () => {
+    // supuesto, from two captures (docs/protocol-notes.md, TODO(hw)): 2026-11-13 the first
+    // attached IO arrived 10 ms after the app's first write; 2026-11-15 the lab wrote nothing
+    // after connecting and heard nothing for 3 s.
     const { hub, sent } = setup();
+    hub.connect();
+    expect(sent).toEqual([]);
+    hub.receive(prop("requestUpdate", "advertisingName"));
+    const attached = captureRx.map((f) => f.bytes).filter(isAttached);
+    expect(sent.slice(0, attached.length)).toEqual(attached);
+    // The reply to that first message comes after the burst, as in the capture.
+    expect(decode(sent[attached.length] ?? new Uint8Array())).toMatchObject({
+      type: "hubProperty",
+      property: "advertisingName",
+      value: "Move Hub",
+    });
+  });
+
+  it("announcePortsOn 'connect' emits the burst at connect", () => {
+    const { hub, sent } = setup({ ...defaultMoveHubConfig(), announcePortsOn: "connect" });
+    hub.connect();
+    expect(sent.filter(isAttached)).toHaveLength(9);
+  });
+
+  it("the burst has the capture's frames in the capture's order", () => {
+    // capturado: fixtures/2026-11-13-move-hub-connect.txt (order 00, 01, 03, 10, 32, 3A, 3B, 3C, 46)
+    const { hub, sent } = setup({ ...defaultMoveHubConfig(), announcePortsOn: "connect" });
     hub.connect();
     expect(sent).toEqual(captureRx.map((f) => f.bytes).filter(isAttached));
     expect(sent.map((f) => f[3])).toEqual([0x00, 0x01, 0x03, 0x10, 0x32, 0x3a, 0x3b, 0x3c, 0x46]);
@@ -449,7 +474,10 @@ describe("SimulatedHub unsupported and malformed input", () => {
 
 describe("SimulatedHub latency", () => {
   it("delays every frame by latencyMs, preserving order", () => {
-    const { hub, clock, sent } = setup(defaultMoveHubConfig(), 20);
+    const { hub, clock, sent } = setup(
+      { ...defaultMoveHubConfig(), announcePortsOn: "connect" },
+      20,
+    );
     hub.connect();
     expect(sent).toEqual([]);
     clock.advance(19);

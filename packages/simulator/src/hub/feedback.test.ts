@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
 import { defaultMoveHubConfig } from "./config.js";
 import { SimulatedHub } from "./simulated-hub.js";
+import { connectAndSpeak } from "../test-support/link.js";
 
 // Startup/completion semantics (doc 3.26 startup and completion nibbles, doc 3.32 feedback bits):
 // the nibble values and the flag bits are derivado del layout; everything about WHEN a hub sends
@@ -47,7 +48,7 @@ function connected() {
   const hub = new SimulatedHub(defaultMoveHubConfig(), { clock });
   const sent: Uint8Array[] = [];
   hub.onSend((f) => sent.push(f));
-  hub.connect();
+  connectAndSpeak(hub);
   sent.length = 0;
   const send = (
     port: number,
