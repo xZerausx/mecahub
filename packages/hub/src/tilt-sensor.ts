@@ -8,9 +8,9 @@ const MODE_ANGLE = 0; // 2 x i8 degrees: cross-checked by pylgbst and node-power
 const MODE_ORIENTATION = 1; // 1 x u8 state id: pylgbst only
 
 export interface Tilt {
-  /** Degrees, -128..127, as the hub sends the first byte: positive when tilted left (operator, 2026-11-15). */
+  /** Degrees, -128..127, as the hub sends the first byte (sign vs. hub frame: TODO(hw)). */
   readonly x: number;
-  /** Degrees, -128..127, as the hub sends the second byte: negative when tilted forward (operator, 2026-11-15). */
+  /** Degrees, -128..127, as the hub sends the second byte (sign vs. hub frame: TODO(hw)). */
   readonly y: number;
 }
 
@@ -33,13 +33,11 @@ export class TiltSensor {
    * Tilt in degrees (mode 0). Resolves with the unsubscribe function once the hub confirmed the
    * setup; the hub then reports the current value.
    *
-   * The axes are exposed as the bytes decode, NOT adjusted, which is what pylgbst does
-   * (node-poweredup negates x, movehubtiltsensor.ts:29, so it disagrees). capturado by the
-   * operator (2026-11-15, lab Readings panel, no frames): tilting LEFT reads x > 0 (83), RIGHT
-   * x < 0 (-87); FORWARD reads y < 0 (-90, twice), BACK y > 0 (9, 0 in an earlier try). Upside down read
-   * (-4, 90). Values look clipped to +-90 and y reached +90 only upside down. TODO(hw): the y axis
-   * mapping beyond its sign (why back only reached +9) and the flat resting value (the capture's
-   * rest, about (5, -80), was not flat).
+   * The axes are exposed as the bytes decode, NOT adjusted (pylgbst does the same; node-poweredup
+   * negates x, movehubtiltsensor.ts:29). The hub-frame sign of each axis is NOT known: the only
+   * readings (operator, 2026-11-15, no frames) were taken with the hub mounted upright in the
+   * 17101 robot build, with directions relative to the robot. TODO(hw): measure with the hub
+   * alone, lying flat.
    */
   onTilt(listener: (tilt: Tilt) => void, options: SubscribeOptions = {}): Promise<() => void> {
     return this.input.subscribe(

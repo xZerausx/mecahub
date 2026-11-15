@@ -44,7 +44,7 @@ export function encodeModeValue(info: IoModeInfo, values: readonly number[]): Ui
  * report nothing until set.
  *
  * supuesto: TODO(hw) mostly not captured (2026-11-15 saw `FF 09 FF 00` in mode 8 at rest, so 255 for
- * no color is confirmed; the tilt sensor read (5, -80) resting on a desk, not zero). 255 for "no color" is in both refs' color tables
+ * no color is confirmed; the tilt sensor read (5, -80) with the hub upright in a robot build, not zero). 255 for "no color" is in both refs' color tables
  * (pylgbst peripherals.py:33, node-poweredup consts.ts:150); 10 inches stands for "nothing in
  * range" (the real sensor's maximum is not documented); mode 8 repeats modes 0 and 1.
  */
