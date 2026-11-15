@@ -219,7 +219,8 @@ export class SimulatedHub {
     if (!this.link) return;
     this.link = false;
     this.announcePending = false;
-    // supuesto: TODO(hw) does the real hub stop its motors when the link drops?
+    // capturado (2026-11-15): a clean GATT disconnect stops the motors. supuesto, TODO(hw): a
+    // silent loss is noticed only after the supervision timeout (`linkLossDetectionMs`).
     if (this.config.stopMotorsOnLinkLoss ?? true) {
       const wait = this.config.linkLossDetectionMs ?? 0;
       if (wait > 0) {
@@ -243,7 +244,11 @@ export class SimulatedHub {
     this.lossTimer = undefined;
   }
 
-  /** App to hub: one LWP3 message. Ignored while not connected. Never throws. */
+  /**
+   * App to hub: one LWP3 message. Ignored while not connected. Never throws. Only the first
+   * message of a write is processed: capturado (2026-11-15), a write holding two messages got one
+   * answer; `decode` ignores the bytes beyond the declared length.
+   */
   receive(frame: Uint8Array): void {
     if (!this.link) return;
     this.announce();
@@ -456,8 +461,8 @@ export class SimulatedHub {
       }
       if (operation === "enableUpdates") {
         this.subscribed.add(property);
-        // supuesto: enableUpdates answers right away. The capture is inconclusive (its three
-        // requests got battery, name, battery back in order). TODO(hw)
+        // capturado: fixtures/2026-11-15-lab-session.txt, enableUpdates is answered by an
+        // immediate Update (battery `06 00 01 06 06 48`, button `06 00 01 02 06 00`).
       }
       this.sendProperty(property);
       return;

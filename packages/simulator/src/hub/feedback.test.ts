@@ -6,7 +6,7 @@ import {
 } from "@mecahub/lwp3";
 import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
-import { defaultMoveHubConfig } from "./config.js";
+import { roundRateConfig } from "../test-support/config.js";
 import { SimulatedHub } from "./simulated-hub.js";
 import { connectAndSpeak } from "../test-support/link.js";
 
@@ -45,7 +45,7 @@ const fb = (port: number, flags: number) => encodePortOutputFeedback({ ports: [{
 
 function connected() {
   const clock = new ManualClock();
-  const hub = new SimulatedHub(defaultMoveHubConfig(), { clock });
+  const hub = new SimulatedHub(roundRateConfig(), { clock });
   const sent: Uint8Array[] = [];
   hub.onSend((f) => sent.push(f));
   connectAndSpeak(hub);
@@ -79,6 +79,20 @@ describe("output command feedback (0x82)", () => {
     expect(sent.splice(0)).toEqual([fb(A, IDLE_COMPLETED)]);
     clock.advance(1000);
     expect(sent).toEqual([]);
+  });
+
+  it("capturado (2026-11-15): StartSpeedForTime 1000 ms with feedback gets `05 00 82 00 01`, then `05 00 82 00 0A` when it ends", () => {
+    // The tx frame is the lab's motorSpeed command, byte for byte.
+    const tx = Uint8Array.from([
+      0x0c, 0x00, 0x81, 0x00, 0x11, 0x09, 0xe8, 0x03, 0x64, 0x64, 0x7f, 0x00,
+    ]);
+    const { hub, clock, sent } = connected();
+    hub.receive(tx);
+    expect(sent.splice(0)).toEqual([Uint8Array.from([0x05, 0x00, 0x82, 0x00, 0x01])]);
+    clock.advance(999);
+    expect(sent).toEqual([]);
+    clock.advance(1);
+    expect(sent.splice(0)).toEqual([Uint8Array.from([0x05, 0x00, 0x82, 0x00, 0x0a])]);
   });
 
   it("a command that runs until replaced is over as soon as it starts: in progress, then completed + idle", () => {

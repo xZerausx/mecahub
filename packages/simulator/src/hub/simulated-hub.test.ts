@@ -166,8 +166,8 @@ describe("SimulatedHub hub properties", () => {
     ]);
   });
 
-  it("enableUpdates pushes an immediate update (supuesto: consistent with the capture, which is inconclusive), then one per change", () => {
-    // supuesto: TODO(hw) confirm that enableUpdates answers right away on a real hub
+  it("enableUpdates pushes an immediate update (capturado 2026-11-15), then one per change", () => {
+    // capturado: fixtures/2026-11-15-lab-session.txt (+1981 request, +2060 Update, no other request)
     const { hub, msgs } = connected();
     hub.receive(prop("enableUpdates", "batteryPercent"));
     hub.setBattery(96);
@@ -208,8 +208,11 @@ describe("SimulatedHub hub properties", () => {
   });
 
   it("firmwareVersion is answered only when configured", () => {
-    // supuesto: the capture never asked for it. TODO(hw)
-    const without = connected();
+    // The default config answers it (capturado: 2.0.0.17, fixtures/2026-11-15-lab-session.txt); a
+    // config without a version gets an error (supuesto: the real hub always has one. TODO(hw)).
+    const { firmwareVersion, ...noFirmware } = defaultMoveHubConfig();
+    expect(firmwareVersion).toEqual({ major: 2, minor: 0, bugfix: 0, build: 17 });
+    const without = connected(noFirmware);
     without.hub.receive(prop("requestUpdate", "firmwareVersion"));
     expect(without.sent).toEqual([
       encodeGenericError({ commandType: 0x01, code: ErrorCode.CommandNotRecognized }),
@@ -444,6 +447,23 @@ describe("SimulatedHub name and raw injection", () => {
     expect(slow.sent).toEqual([]);
     slow.clock.advance(10);
     expect(slow.sent).toEqual([Uint8Array.of(7)]);
+  });
+});
+
+describe("SimulatedHub multi-message writes", () => {
+  it("capturado (2026-11-15): only the first message of a write is answered", () => {
+    // `05 00 01 06 05` (battery request) + `05 00 01 01 05` (name request) in one write: the real
+    // hub answered the battery only. fixtures/2026-11-15-lab-session.txt, multiMessageWrite.
+    const { hub, sent } = connected();
+    hub.receive(Uint8Array.from([0x05, 0x00, 0x01, 0x06, 0x05, 0x05, 0x00, 0x01, 0x01, 0x05]));
+    expect(sent).toEqual([
+      encodeHubProperty({
+        type: "hubProperty",
+        operation: "update",
+        property: "batteryPercent",
+        value: 97,
+      }),
+    ]);
   });
 });
 

@@ -441,7 +441,7 @@ describe("export", () => {
     expect(text).toContain("# origin: simulado");
     expect(text).toContain("# date: 2026-11-20T10:00:00.000Z");
     expect(text).toContain("# hub name: Move Hub");
-    expect(text).toContain("# firmware: unknown");
+    expect(text).toContain("# firmware: 2.0.0.17");
     const frames = parseCapture(text);
     expect(frames.length).toBeGreaterThan(8);
     expect(frames[0]?.at).toBe(0);

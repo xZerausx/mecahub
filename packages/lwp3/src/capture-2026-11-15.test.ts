@@ -136,7 +136,7 @@ describe("capture 2026-11-15 (lab session): rx frames", () => {
     // E8 03 = 1000 ms: the end comes about one second after the start.
     expect(frames[done]!.at - frames[started]!.at).toBeGreaterThan(1000);
     expect(frames[done]!.at - frames[started]!.at).toBeLessThan(1300);
-    const flags = (m: Lwp3Message) =>
+    const flags = (m: Lwp3Message | { kind: "error" }) =>
       "type" in m && m.type === "portOutputFeedback" ? m.ports[0] : undefined;
     expect(flags(decode(frames[started]!.bytes))).toMatchObject({
       port: 0,

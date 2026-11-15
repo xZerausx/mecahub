@@ -10,7 +10,8 @@ import {
 } from "@mecahub/lwp3";
 import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock.js";
-import { defaultMoveHubConfig, type SimHubConfig } from "./config.js";
+import type { SimHubConfig } from "./config.js";
+import { roundRateConfig } from "../test-support/config.js";
 import { SimulatedHub } from "./simulated-hub.js";
 import { connectAndSpeak } from "../test-support/link.js";
 
@@ -33,7 +34,7 @@ const startSpeed = (speed: number): Command => ({
   useProfile: profile,
 });
 
-function connected(config: SimHubConfig = defaultMoveHubConfig()) {
+function connected(config: SimHubConfig = roundRateConfig()) {
   const clock = new ManualClock();
   const hub = new SimulatedHub(config, { clock });
   const sent: Uint8Array[] = [];
@@ -47,12 +48,12 @@ function connected(config: SimHubConfig = defaultMoveHubConfig()) {
 }
 
 const withPort = (port: number, patch: object): SimHubConfig => {
-  const c = defaultMoveHubConfig();
+  const c = roundRateConfig();
   return { ...c, ports: c.ports.map((p) => (p.port === port ? { ...p, ...patch } : p)) };
 };
 
 describe("motor commands (port output 0x81)", () => {
-  // Kinematics are supuestos (TODO(hw)): constant speed, speed% of maxDegPerSec (default 1000 deg/s).
+  // Kinematics are supuestos (TODO(hw)): constant speed, speed% of maxDegPerSec (1000 deg/s here, see roundRateConfig).
   it("startSpeed runs the motor until replaced: 50% is 500 deg/s", () => {
     const { hub, clock, send } = connected();
     send(A, startSpeed(50));
@@ -341,7 +342,7 @@ describe("motion bookkeeping between ticks", () => {
 describe("dispose", () => {
   // With stopMotorsOnLinkLoss false the motors keep ticking after the link is lost: that is the
   // point of the setting, and it only ends when they stop or the hub is disposed.
-  const keepRunning = { ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false };
+  const keepRunning = { ...roundRateConfig(), stopMotorsOnLinkLoss: false };
 
   it("clears the motor tick that survives a link loss", () => {
     const { hub, clock, send } = connected(keepRunning);
@@ -356,7 +357,7 @@ describe("dispose", () => {
 
   it("clears frames held back by latency, and the hub stops answering", () => {
     const clock = new ManualClock();
-    const hub = new SimulatedHub(defaultMoveHubConfig(), { clock, latencyMs: 50 });
+    const hub = new SimulatedHub(roundRateConfig(), { clock, latencyMs: 50 });
     const sent: Uint8Array[] = [];
     hub.onSend((f) => sent.push(f));
     connectAndSpeak(hub);
@@ -496,7 +497,7 @@ describe("link loss (stopMotorsOnLinkLoss)", () => {
   });
 
   it("with stopMotorsOnLinkLoss false they keep going, and a timed command still ends", () => {
-    const config = { ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false };
+    const config = { ...roundRateConfig(), stopMotorsOnLinkLoss: false };
     const { hub, clock, send } = connected(config);
     send(A, startSpeed(100));
     send(B, {
@@ -515,7 +516,7 @@ describe("link loss (stopMotorsOnLinkLoss)", () => {
 
   it("linkLossDetectionMs delays the hub's reaction: the motors run until it has passed (supuesto, TODO(hw))", () => {
     // A real hub may only notice a dead link after the BLE supervision timeout (seconds).
-    const config = { ...defaultMoveHubConfig(), linkLossDetectionMs: 2000 };
+    const config = { ...roundRateConfig(), linkLossDetectionMs: 2000 };
     const { hub, clock, send } = connected(config);
     send(A, startSpeed(100));
     clock.advance(100);
@@ -528,7 +529,7 @@ describe("link loss (stopMotorsOnLinkLoss)", () => {
   });
 
   it("a hub reconnected before the loss is detected keeps its new commands, and dispose clears the wait", () => {
-    const config = { ...defaultMoveHubConfig(), linkLossDetectionMs: 500 };
+    const config = { ...roundRateConfig(), linkLossDetectionMs: 500 };
     const { hub, clock, send } = connected(config);
     hub.disconnect();
     hub.connect();
@@ -541,7 +542,7 @@ describe("link loss (stopMotorsOnLinkLoss)", () => {
   });
 
   it("a second disconnect (or one on a hub that never connected) does not orphan the wait and stop a new link's motors", () => {
-    const config = { ...defaultMoveHubConfig(), linkLossDetectionMs: 500 };
+    const config = { ...roundRateConfig(), linkLossDetectionMs: 500 };
     const { hub, clock, send } = connected(config);
     hub.disconnect();
     hub.disconnect();
