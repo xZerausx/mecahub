@@ -46,8 +46,10 @@ export interface SimHubConfig {
   readonly ports: readonly SimPortConfig[];
   readonly virtualPorts: readonly SimVirtualPortConfig[];
   /**
-   * Whether the hub stops all motors when the Bluetooth link ends. Default true. supuesto: the
-   * real behaviour is unknown, TODO(hw) (docs/protocol-notes.md, write timeouts). When false the
+   * Whether the hub stops all motors when the Bluetooth link ends. Default true. capturado
+   * (fixtures/2026-11-15-lab-session.txt, operator note): motor A stopped by itself when the lab
+   * cleanly disconnected GATT. supuesto, TODO(hw): a silent loss (out of range) is only noticed
+   * after the supervision timeout, see `linkLossDetectionMs`. When false the
    * motors keep ticking after the link is lost until they stop or `SimulatedHub.dispose()`.
    */
   readonly stopMotorsOnLinkLoss?: boolean;
@@ -61,7 +63,8 @@ export interface SimHubConfig {
   /**
    * When the hub announces its attached devices. Default "firstMessage": the link comes up silent
    * and the burst goes out when the app's first message arrives, before its reply. supuesto,
-   * derived from the 2026-11-13 and 2026-11-15 captures (docs/protocol-notes.md), TODO(hw).
+   * derived from the 2026-11-13 and 2026-11-15 captures (docs/protocol-notes.md); the 2026-11-15
+   * one saw the burst 2 ms after the app's first write (a firmware request).
    */
   readonly announcePortsOn?: "connect" | "firstMessage";
 }
@@ -75,13 +78,14 @@ const v = (major: number, minor: number, bugfix: number, build: number): Version
 
 /**
  * A Move Hub exactly as the first real capture saw it. Every value below is 'capturado' (see
- * fixtures/2026-11-13-move-hub-connect.txt). Firmware/hardware versions are not set: the capture never asked for those properties.
+ * fixtures/2026-11-13-move-hub-connect.txt). The hardware version is not set: no capture asked for it.
  */
 export function defaultMoveHubConfig(): SimHubConfig {
   return {
     name: "Move Hub", // capturado: fixtures/2026-11-13-move-hub-connect.txt
     batteryPercent: 97, // capturado: fixtures/2026-11-13-move-hub-connect.txt (0x61)
-    buttonPressed: false, // not captured: nobody pressed it; TODO(hw)
+    buttonPressed: false, // capturado: fixtures/2026-11-15-lab-session.txt (button update 0x00 at rest)
+    firmwareVersion: v(2, 0, 0, 17), // capturado: fixtures/2026-11-15-lab-session.txt (0x20000017, BCD)
     ports: [
       // capturado: fixtures/2026-11-13-move-hub-connect.txt: external ports A and B (tacho motors) and C/D slot 0x03 (color & distance sensor)
       { port: 0x00, ioType: 0x27, hw: v(1, 0, 0, 0), sw: v(1, 0, 0, 0) },

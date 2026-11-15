@@ -165,13 +165,13 @@ describe("measureMotorSpeed", () => {
     expect(result.runs.map((r) => r.speedPct)).toEqual([100, 50]);
     const [full, half] = result.runs;
     expect(full?.status).toBe("completed");
-    expect(full?.degrees).toBeGreaterThan(900);
-    expect(full?.degPerSec).toBeGreaterThan(900);
-    expect(full?.degPerSec).toBeLessThan(1100);
+    expect(full?.degrees).toBeGreaterThan(1000);
+    expect(full?.degPerSec).toBeGreaterThan(1050);
+    expect(full?.degPerSec).toBeLessThan(1290);
     expect(full?.estimatedMaxDegPerSec).toBeGreaterThan(900);
-    expect(half?.degPerSec).toBeGreaterThan(450);
-    expect(half?.degPerSec).toBeLessThan(550);
-    expect(half?.estimatedMaxDegPerSec).toBeGreaterThan(900);
+    expect(half?.degPerSec).toBeGreaterThan(525);
+    expect(half?.degPerSec).toBeLessThan(645);
+    expect(half?.estimatedMaxDegPerSec).toBeGreaterThan(1000);
     expect(c.getSnapshot().measurements.motorSpeed).toEqual(result);
   });
 

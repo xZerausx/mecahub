@@ -154,6 +154,71 @@ describe("connecting", () => {
   });
 });
 
+describe("previous session", () => {
+  it("keeps the capture of the session that ended when the user connects again", async () => {
+    const c = await connected();
+    expect(c.getSnapshot().hasPreviousCapture).toBe(false);
+    expect(c.exportPreviousCapture()).toBeUndefined();
+    await c.run("a", 50);
+    c.sim?.transport.dropLink();
+    await settle();
+    const ended = c.exportCapture();
+    expect(ended).toContain("link lost");
+
+    const again = c.connect();
+    await settle(3000);
+    await again;
+    await settle();
+
+    expect(c.getSnapshot().hasPreviousCapture).toBe(true);
+    expect(c.exportPreviousCapture()?.replace("# previous session\n", "")).toBe(ended);
+    // The current capture is only the new session: the drop of the old one is not in it.
+    expect(c.exportCapture()).not.toContain("link lost");
+  });
+
+  it("dates the previous session when its link ended, not at the next connect, and says so", async () => {
+    let clockDate = new Date("2026-11-20T10:00:00.000Z");
+    const c = await connected({ date: () => clockDate });
+    c.sim?.transport.dropLink();
+    await settle();
+    clockDate = new Date("2026-11-20T10:30:00.000Z");
+    const again = c.connect();
+    await settle(3000);
+    await again;
+    const previous = c.exportPreviousCapture() ?? "";
+    expect(previous).toContain("# date: 2026-11-20T10:00:00.000Z");
+    expect(previous).toContain("# previous session");
+  });
+
+  it("switching mode forgets the previous session", async () => {
+    const c = await connected({
+      webBluetoothAvailable: true,
+      createRealTransport: () => new FakeTransport(),
+      mode: "simulator",
+    });
+    c.sim?.transport.dropLink();
+    await settle();
+    expect(c.getSnapshot().hasPreviousCapture).toBe(true);
+    c.setMode("real");
+    expect(c.getSnapshot().hasPreviousCapture).toBe(false);
+    expect(c.exportPreviousCapture()).toBeUndefined();
+  });
+
+  it("keeps only the last ended session", async () => {
+    const c = await connected();
+    for (let i = 0; i < 2; i++) {
+      c.sim?.transport.dropLink();
+      await settle();
+      const again = c.connect();
+      await settle(3000);
+      await again;
+      await settle();
+    }
+    const previous = c.exportPreviousCapture() ?? "";
+    expect(previous.match(/^# mecahub lab capture$/gm)).toHaveLength(1);
+  });
+});
+
 describe("readings", () => {
   it("shows battery, button, tilt and color and distance", async () => {
     const c = await connected();
@@ -441,7 +506,7 @@ describe("export", () => {
     expect(text).toContain("# origin: simulado");
     expect(text).toContain("# date: 2026-11-20T10:00:00.000Z");
     expect(text).toContain("# hub name: Move Hub");
-    expect(text).toContain("# firmware: unknown");
+    expect(text).toContain("# firmware: 2.0.0.17");
     const frames = parseCapture(text);
     expect(frames.length).toBeGreaterThan(8);
     expect(frames[0]?.at).toBe(0);

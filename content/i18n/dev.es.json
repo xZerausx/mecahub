@@ -214,6 +214,7 @@
   "dev.lab.export.heading": "Exportar",
   "dev.lab.export.note": "Guardá una captura como fixture solo si viene de un hub real.",
   "dev.lab.export.copy": "Copiar texto de la captura",
+  "dev.lab.export.copyPrevious": "Copiar sesión anterior",
   "dev.lab.export.json": "Descargar resultados en JSON",
   "dev.lab.export.copied": "Captura copiada.",
   "dev.lab.export.copyFailed": "No se pudo copiar la captura.",

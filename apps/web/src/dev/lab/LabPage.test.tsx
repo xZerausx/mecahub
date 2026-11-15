@@ -66,6 +66,19 @@ describe("LabPage", () => {
     }
   });
 
+  it("offers the previous session's capture only once a session has ended and a new one started", async () => {
+    const c = await connected();
+    expect(render(c)).not.toContain(en["dev.lab.export.copyPrevious"]);
+    c.sim?.transport.dropLink();
+    await vi.advanceTimersByTimeAsync(10);
+    const again = c.connect();
+    await vi.advanceTimersByTimeAsync(3000);
+    await again;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(render(c)).toContain(en["dev.lab.export.copyPrevious"]);
+    expect(render(c, createDevTranslator("es"))).toContain(es["dev.lab.export.copyPrevious"]);
+  });
+
   it("renders in Spanish", () => {
     const html = render(lab(), createDevTranslator("es"));
     expect(html).toContain(es["dev.lab.title"]);

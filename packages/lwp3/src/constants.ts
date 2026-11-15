@@ -96,7 +96,7 @@ export const IoTypeId = {
 export type IoTypeId = (typeof IoTypeId)[keyof typeof IoTypeId];
 
 /**
- * Color ids of the LWP3 color table ('derivado del layout': pylgbst peripherals.py:22-33 and
+ * Color ids of the LWP3 color table ('derivado del layout', confirmed by the operator on 2026-11-15: every color of the table shown to the sensor appeared right on the lab page; not a frame capture, no fixture: pylgbst peripherals.py:22-33 and
  * node-poweredup consts.ts:138-151 agree on all twelve values): what the color & distance sensor reports in mode 0 and what the
  * hub LED takes in its index mode (names after the refs). `None` (255) is "no color": the sensor sees
  * nothing, and for the LED it means off like `Black`.

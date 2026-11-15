@@ -1,7 +1,8 @@
 import { encodePortOutputCommand } from "@mecahub/lwp3";
 import { TransportError } from "@mecahub/transport";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ManualClock, SimulatedHub, defaultMoveHubConfig, realClock } from "./hub/index.js";
+import { ManualClock, SimulatedHub, realClock } from "./hub/index.js";
+import { roundRateConfig } from "./test-support/config.js";
 import type { SimClock, SimHubConfig } from "./hub/index.js";
 import { SimulatorTransport } from "./transport.js";
 
@@ -46,7 +47,7 @@ const stopVirtual = () =>
   });
 
 async function connect(clock: SimClock, options: { latency?: number; config?: SimHubConfig } = {}) {
-  const hub = new SimulatedHub(options.config ?? defaultMoveHubConfig(), { clock });
+  const hub = new SimulatedHub(options.config ?? roundRateConfig(), { clock });
   const sim = new SimulatorTransport(hub, {
     clock,
     ...(options.latency === undefined ? {} : { writeLatencyMs: options.latency }),
@@ -170,7 +171,7 @@ describe("STOP: mandatory scenarios (real-hub confirmation is TODO(hw))", () => 
 
   it("STOP: with stopMotorsOnLinkLoss false a dropped link leaves the motors running (what the app must not rely on)", async () => {
     const clock = new ManualClock();
-    const config = { ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false };
+    const config = { ...roundRateConfig(), stopMotorsOnLinkLoss: false };
     const { hub, sim } = await connect(clock, { config });
     await sim.write(startSpeed(A, 100));
     sim.dropLink();
@@ -183,7 +184,7 @@ describe("STOP: mandatory scenarios (real-hub confirmation is TODO(hw))", () => 
   // about (n + 1) * L. Three motors (A, B and an external motor on C) fit the 150 ms urgent deadline by frames
   // up to L = 37 ms; beyond that the urgent deadline tears the link down instead. Measured here, per write latency, in the simulator only: TODO(hw) the real L.
   const THREE_MOTORS: SimHubConfig = (() => {
-    const c = defaultMoveHubConfig();
+    const c = roundRateConfig();
     const v = { major: 1, minor: 0, bugfix: 0, build: 0 };
     return { ...c, ports: [...c.ports, { port: 0x02, ioType: 0x26, hw: v, sw: v }] };
   })();
@@ -251,7 +252,7 @@ describe("STOP: mandatory scenarios (real-hub confirmation is TODO(hw))", () => 
     // after the BLE supervision timeout (seconds). Link loss is then NOT a < 200 ms STOP, and STOP
     // by frames stays the primary path. linkLossDetectionMs is a supuesto: TODO(hw) measure it.
     vi.useFakeTimers();
-    const config = { ...defaultMoveHubConfig(), linkLossDetectionMs: 2000 };
+    const config = { ...roundRateConfig(), linkLossDetectionMs: 2000 };
     const { hub, sim, stillSince } = await connect(realClock, { config });
     hub.receive(startSpeed(A, 100));
     hub.receive(startSpeed(B, -100));

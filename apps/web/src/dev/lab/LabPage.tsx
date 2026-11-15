@@ -77,7 +77,13 @@ export function LabPage({ controller, t, copy, save }: LabPageProps) {
         <div>
           <Measurements controller={controller} snap={snap} t={t} />
           <Diagnostics snap={snap} t={t} />
-          <Export controller={controller} t={t} copy={copy} save={save} />
+          <Export
+            controller={controller}
+            hasPrevious={snap.hasPreviousCapture}
+            t={t}
+            copy={copy}
+            save={save}
+          />
         </div>
       </div>
     </main>
@@ -782,10 +788,12 @@ function Diagnostics({ snap, t }: Pick<PartProps, "snap" | "t">) {
 
 function Export({
   controller,
+  hasPrevious,
   t,
   copy,
   save,
-}: Pick<PartProps, "controller" | "t"> & Pick<LabPageProps, "copy" | "save">) {
+}: Pick<PartProps, "controller" | "t"> &
+  Pick<LabPageProps, "copy" | "save"> & { hasPrevious: boolean }) {
   const [notice, setNotice] = useState<MessageKey | undefined>();
   const [fallback, setFallback] = useState<string | undefined>();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -795,8 +803,9 @@ function Export({
     area.current?.focus();
     area.current?.select();
   }, [fallback]);
-  const onCopy = (): void => {
-    const text = controller.exportCapture();
+  const onCopy = (previous = false): void => {
+    const text =
+      (previous ? controller.exportPreviousCapture() : undefined) ?? controller.exportCapture();
     setFallback(undefined);
     copy(text).then(
       () => setNotice("dev.lab.export.copied"),
@@ -811,9 +820,16 @@ function Export({
       <h2 id="lab-export">{t("dev.lab.export.heading")}</h2>
       <p>{t("dev.lab.export.note")}</p>
       <p>
-        <button type="button" onClick={onCopy}>
+        <button type="button" onClick={() => onCopy()}>
           {t("dev.lab.export.copy")}
         </button>{" "}
+        {hasPrevious ? (
+          <>
+            <button type="button" onClick={() => onCopy(true)}>
+              {t("dev.lab.export.copyPrevious")}
+            </button>{" "}
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => {

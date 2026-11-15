@@ -64,7 +64,7 @@ describe("SimMotor", () => {
     expect(m.degrees).toBe(2);
   });
 
-  it("the default maximum speed is a labelled assumption of 1000 deg/s", () => {
-    expect(DEFAULT_MAX_DEG_PER_SEC).toBe(1000);
+  it("the default maximum speed is the captured 1170 deg/s (2026-11-15: 1105 degrees in 1 s at 100 %)", () => {
+    expect(DEFAULT_MAX_DEG_PER_SEC).toBe(1170);
   });
 });

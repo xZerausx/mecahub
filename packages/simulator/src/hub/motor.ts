@@ -1,10 +1,11 @@
 /**
- * Maximum speed of a motor at 100 %, in degrees per second. supuesto: no reference library or doc
- * states the no-load speed of the Move Hub's motors (none of pylgbst, node-poweredup or
- * pybricksdev), so this is a round number, not a measurement. TODO(hw) measure it on a real hub.
- * Configurable per motor port with `maxDegPerSec`.
+ * Maximum speed of a motor at 100 %, in degrees per second. capturado: fixtures/
+ * 2026-11-15-lab-session.txt, StartSpeedForTime 1000 ms at 100 % moved 1105 degrees (about 1169
+ * deg/s over the sampled span, a lower bound: it includes the ramp-up). Configurable per motor
+ * port with `maxDegPerSec`. Known limitation, TODO(hw): the real motor is NOT linear in the speed
+ * percentage (50 % measured about 848 deg/s, not 585); the simulator keeps the linear model.
  */
-export const DEFAULT_MAX_DEG_PER_SEC = 1000;
+export const DEFAULT_MAX_DEG_PER_SEC = 1170;
 
 /** Device types the simulator drives as motors with a tacho (lwp3 `IoTypeId.ExternalMotorWithTacho` / `InternalMotorWithTacho`). */
 export const MOTOR_IO_TYPES: readonly number[] = [0x26, 0x27];

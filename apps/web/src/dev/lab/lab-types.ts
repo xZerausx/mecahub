@@ -191,6 +191,8 @@ export interface LabSnapshot {
   readonly connection: LabConnection;
   /** The hub announced its ports (the lab is usable). */
   readonly ready: boolean;
+  /** A session ended and the user connected again: its capture is kept (`exportPreviousCapture`). */
+  readonly hasPreviousCapture: boolean;
   readonly timings: LabTimings;
   readonly hubName: string | undefined;
   readonly firmware: string | undefined;
@@ -295,6 +297,8 @@ export interface LabController {
   stop(): Promise<void>;
   /** Text in the fixtures format (packages/lwp3/fixtures/README.md) with the measurement results. */
   exportCapture(): string;
+  /** The capture of the last session that ended before the current one, or undefined. */
+  exportPreviousCapture(): string | undefined;
   /** The structured results (no frames). */
   exportJson(): string;
   /** The simulator behind the lab, when it runs on one (tests and fault injection). */

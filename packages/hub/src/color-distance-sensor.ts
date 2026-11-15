@@ -5,7 +5,7 @@ import type { SubscribeOptions } from "./input-subscription.js";
 import type { HubSession } from "./session.js";
 
 // Input modes of the color & distance sensor (io type 0x25), see lwp3 io-modes.ts: every one of
-// them is cross-checked by pylgbst and node-poweredup ('derivado del layout', TODO(hw)).
+// them is cross-checked by pylgbst and node-poweredup ('derivado del layout', TODO(hw)); the color ids of the table were confirmed by the operator on 2026-11-15 (not a frame capture).
 const MODE_COLOR = 0;
 const MODE_DISTANCE = 1;
 const MODE_REFLECTED = 3;
