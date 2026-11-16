@@ -279,6 +279,23 @@ describe("edge-triggered scripts", () => {
     expect(h.device.log).toContain("led(red)");
   });
 
+  it("tilt re-arms only once it falls below the release angle (hysteresis)", async () => {
+    const h = harness();
+    await h.start(program([on("t", { type: "tilt", direction: "forward" }, s.led("red"))]));
+    const fired = () => h.device.log.filter((l) => l === "led(red)").length;
+    h.device.pushTilt(0, 21);
+    await advance(h.clock, 20);
+    expect(fired()).toBe(1);
+    h.device.pushTilt(0, 17); // wobbling around the threshold: still tilted
+    h.device.pushTilt(0, 22);
+    await advance(h.clock, 20);
+    expect(fired()).toBe(1);
+    h.device.pushTilt(0, 14); // released
+    h.device.pushTilt(0, 21);
+    await advance(h.clock, 20);
+    expect(fired()).toBe(2);
+  });
+
   it("a program with only event scripts never finishes by itself; STOP resolves it", async () => {
     const h = harness();
     await h.start(colorProgram());
