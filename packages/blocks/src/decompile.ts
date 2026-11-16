@@ -1,5 +1,5 @@
 import type { Program } from "@mecahub/ir";
-import { MAX_DEPTH } from "./compile.js";
+import { MAX_DEPTH, MAX_SECONDS } from "./compile.js";
 import type { BlockState, WorkspaceState } from "./serialization.js";
 import { BLOCK_SPECS, type BlockSpec, type FieldArg, type InputArg } from "./spec.js";
 
@@ -11,7 +11,9 @@ type Node = Record<string, unknown>;
 
 export type DecompileError = { code: "unknown-node" | "too-deep"; message: string };
 /** Something the blocks cannot hold, so the state differs from the program. */
-export type DecompileWarning = { code: "variable-initial-dropped"; variableId: string };
+export type DecompileWarning =
+  | { code: "variable-initial-dropped"; variableId: string }
+  | { code: "time-over-limit"; statementId: string };
 export type DecompileResult =
   | { ok: true; state: WorkspaceState; warnings: DecompileWarning[] }
   | { ok: false; errors: DecompileError[] };
@@ -144,6 +146,26 @@ const toBlock = (
   return block;
 };
 
+/** Statements, in program order, whose time literal is over MAX_SECONDS (it would not compile back). */
+const overLimitTimes = (program: Program): DecompileWarning[] => {
+  const out: DecompileWarning[] = [];
+  const stack: Node[] = [];
+  for (const script of [...program.scripts].reverse()) {
+    stack.push(...[...(script.body as unknown as Node[])].reverse());
+  }
+  while (stack.length > 0) {
+    const node = stack.pop() as Node;
+    const ms = node.ms as Node | undefined;
+    if (ms?.type === "number" && (ms.value as number) > MAX_SECONDS * 1000) {
+      out.push({ code: "time-over-limit", statementId: String(node.id) });
+    }
+    for (const key of ["else", "then", "body"]) {
+      if (Array.isArray(node[key])) stack.push(...[...(node[key] as Node[])].reverse());
+    }
+  }
+  return out;
+};
+
 /**
  * Turns an IR program into the JSON `Blockly.serialization.workspaces.load` reads, so a program
  * (an example, an activity, a saved file) can be opened in the editor. `compile(decompile(p))`
@@ -153,6 +175,8 @@ const toBlock = (
  *   one that had a non-zero value is reported in `warnings`.
  * - A millisecond expression that is not a literal or `x * 1000` comes back as
  *   `(x / 1000) * 1000`, which means the same thing. `x * 1000` with a literal `x` does too.
+ * - A time literal over `MAX_SECONDS` seconds is shown but does not compile back (`bad-field`);
+ *   each is reported as `time-over-limit` with the statement id.
  * - A millisecond literal is shown as `ms / 1000` seconds and compiled back with rounding to whole
  *   milliseconds, so a non-integer ms in the IR comes back rounded.
  *
@@ -175,9 +199,12 @@ export const decompile = (program: Program): DecompileResult => {
         blocks: { languageVersion: 0, blocks },
         variables: program.variables.map((v) => ({ id: v.id, name: v.name })),
       },
-      warnings: program.variables
-        .filter((v) => v.initial !== 0)
-        .map((v) => ({ code: "variable-initial-dropped", variableId: v.id })),
+      warnings: [
+        ...program.variables
+          .filter((v) => v.initial !== 0)
+          .map((v): DecompileWarning => ({ code: "variable-initial-dropped", variableId: v.id })),
+        ...overLimitTimes(program),
+      ],
     };
   } catch (error) {
     if (error instanceof Failure) return { ok: false, errors: [error.error] };

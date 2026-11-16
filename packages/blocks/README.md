@@ -55,7 +55,7 @@ all-nodes fixture, with these documented exceptions:
 - A non-literal millisecond expression that is not `x * 1000` (or has a literal `x`) comes back as
   `(x / 1000) * 1000`: the same meaning.
 - A non-integer millisecond literal comes back rounded to whole milliseconds.
-- A time over an hour does not compile back (`MAX_SECONDS`).
+- A time literal over an hour does not compile back (`MAX_SECONDS`); `decompile` reports each as `{ code: "time-over-limit", statementId }` in `warnings`.
 - A variable's `initial` is not kept (blocks have no place for it; it compiles as 0).
   `decompile` reports each one as `{ code: "variable-initial-dropped", variableId }` in `warnings`.
 

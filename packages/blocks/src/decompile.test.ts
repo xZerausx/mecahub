@@ -252,6 +252,25 @@ describe("decompile: lossy conversions are reported", () => {
     expect(result.ok && result.state.variables).toHaveLength(3);
   });
 
+  it("warns, with the statement id, for a time literal over MAX_SECONDS that will not compile back", () => {
+    const body = [
+      { id: "ok", type: "wait", ms: n(3_600_000) },
+      { id: "long", type: "wait", ms: n(3_600_001) },
+      {
+        id: "outer",
+        type: "forever",
+        body: [{ id: "deep", type: "motorRunForTime", port: "A", speed: n(50), ms: n(9e9) }],
+      },
+      { id: "expr", type: "wait", ms: { type: "variable", variable: "v" } },
+    ];
+    const result = decompileResult(program([{ id: "h", trigger: { type: "start" }, body }]));
+    expect(result.ok && result.warnings).toEqual([
+      { code: "time-over-limit", statementId: "long" },
+      { code: "time-over-limit", statementId: "deep" },
+    ]);
+    expect(compile(result.ok ? result.state : {}).ok).toBe(false);
+  });
+
   it("has no warnings when nothing is lost", () => {
     for (const { program: p } of [...examples, allNodes]) {
       const result = decompileResult(p);
