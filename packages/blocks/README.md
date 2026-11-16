@@ -1,6 +1,6 @@
 # @mecahub/blocks
 
-The Advanced-level block catalogue and its translation to and from the program IR
+The block catalogue (Icons and Advanced levels) and its translation to and from the program IR
 ([ADR 0003](../../docs/decisions/0003-program-ir.md)). It runs in plain Node: no DOM, no React, and
 `blockly` is imported with `import type` only (ESLint enforces it). Mounting the Blockly editor and
 registering these blocks happens in `apps/web`, not here.
@@ -11,13 +11,39 @@ registering these blocks happens in `apps/web`, not here.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `spec.ts`        | `BLOCK_SPECS`: one declarative row per block (Blockly type, IR node, fields, inputs, shape). The single source of truth. |
 | `definitions.ts` | `blockDefinitions(messages)`: Blockly JSON block definitions, labels and tooltips from i18n.                             |
-| `toolbox.ts`     | `toolbox(messages)`: categories, every Number input pre-filled with an `mh_number` shadow.                               |
+| `toolbox.ts`     | `toolbox(messages, level)`: Advanced = categories with `mh_number` shadows; Icons = a flat flyout with no text.          |
+| `icons.ts`       | `ICONS` / `iconSrc(name)`: our own 48x48 SVGs as `data:image/svg+xml` URIs for the Icons level.                          |
 | `compile.ts`     | `compile(state)`: `Blockly.serialization.workspaces.save` JSON to a validated IR `Program`.                              |
 | `decompile.ts`   | `decompile(program)`: IR `Program` to workspace JSON for `workspaces.load`.                                              |
 
 Block types are prefixed `mh_`. All user-visible text lives in `content/i18n` under
 `blocks.<type>.message`, `.tooltip`, `.option.<value>` and `.input.<NAME>`, plus
 `blocks.category.<id>`. A message keeps Blockly's `%1..%n` tokens; a translation may reorder them.
+
+## Levels
+
+Every row has `level: "icons" | "advanced"`. **All definitions are always registered** (so a saved
+program opens on either level); the level only decides what the toolbox offers.
+
+The Icons level is eight `mh_icon_*` blocks that compile to **existing IR** (no new nodes): start
+flag, forward, backward, turn left, turn right, light, hourglass, stop (no sound block: no audio
+ships). They show no words, only pictures (`field_image`, image dropdown options); their i18n keys
+`blocks.<type>.tooltip`, `.alt` and `.option.<v>` are the tooltip and the alt text. There is no
+`.message`: `message0` is only `%n` tokens.
+
+- Movement blocks and the hourglass have one small number, `STEPS` / `SECONDS`, an integer 1..9
+  (a `count` field). The compiler scales it to the IR literal: forward `driveForDegrees` at +50/+50
+  for `steps * 360` degrees; turns at -50/+50 (left) or +50/-50 (right) for `steps * ICON_TURN_DEGREES`;
+  wait `steps * 1000` ms. A value outside 1..9 or not an integer is `bad-field`.
+- The speeds, directions and `ICON_TURN_DEGREES` (180) are **supuesto**: `TODO(hw)` check the motor
+  orientation and calibrate a turn on the 17101 build. They live in `spec.ts` (`ICON_DRIVE`, ...).
+- `fixed` holds IR properties a block always sets, now also IR literals (`{ type: "number", value:
+50 }`). The compiler copies them; the decompiler matches them by deep equality.
+- `decompile(program, { level })`: at `"advanced"` (default) only Advanced blocks are produced. At
+  `"icons"`, an icon block is used where it holds the node exactly (for example `driveForDegrees`
+  +50/+50 for a whole number of turns, 1..9) and an Advanced block otherwise, so **an Icons program
+  may decompile to Advanced blocks** (and the round trip through `compile` still holds).
+- The Icons level looks best with the `zelos` renderer and a start scale around 1.5 (apps/web).
 
 ## Mounting notes
 
@@ -70,6 +96,10 @@ is `too-deep`, both as `{ ok: false, errors }`.
 3. Add its `blocks.<type>.*` keys to `content/i18n/en.json` and `es.json` (`definitions.test.ts`
    checks the keys and the tokens).
 4. Add a row to the table in `compile.test.ts`.
+
+For an icon block: tag the row `level: "icons"`, give it a `pic(...)` argument (add the drawing to
+`icons.ts`; `icons.test.ts` checks every icon is used and well formed) and the `.tooltip` / `.alt`
+keys instead of `.message`.
 
 ## Out of scope
 
