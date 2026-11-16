@@ -44,7 +44,7 @@ export interface BlockEvent {
   readonly statementId: string;
 }
 
-export interface ErrorEvent {
+export interface RuntimeErrorEvent {
   readonly scriptId?: string;
   readonly statementId?: string;
   readonly error: RuntimeError;

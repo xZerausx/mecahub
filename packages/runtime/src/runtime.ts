@@ -11,7 +11,7 @@ import { SensorCache, planProgram } from "./sensors.js";
 import type { SensorPlan } from "./sensors.js";
 import { EdgeDetector } from "./triggers.js";
 import { RuntimeError } from "./types.js";
-import type { BlockEvent, ErrorEvent, RunResult, SoundSink } from "./types.js";
+import type { BlockEvent, RuntimeErrorEvent, RunResult, SoundSink } from "./types.js";
 
 export interface RuntimeOptions {
   readonly device: RuntimeDevice;
@@ -31,7 +31,7 @@ export interface Runtime {
   readonly running: boolean;
   onBlockEnter(listener: (event: BlockEvent) => void): Unsubscribe;
   onBlockExit(listener: (event: BlockEvent) => void): Unsubscribe;
-  onError(listener: (event: ErrorEvent) => void): Unsubscribe;
+  onError(listener: (event: RuntimeErrorEvent) => void): Unsubscribe;
   onFinished(listener: (result: RunResult) => void): Unsubscribe;
 }
 
@@ -56,7 +56,7 @@ const subscribe = <T>(listeners: Listeners<T>, listener: (event: T) => void): Un
  * How long to wait for every subscribed sensor to report once before giving up. supuesto: the hub
  * reports the current value right after a subscription is set up; no real capture of that yet. TODO(hw)
  */
-export const FIRST_VALUE_TIMEOUT_MS = 2000;
+const FIRST_VALUE_TIMEOUT_MS = 2000;
 
 export function createRuntime(options: RuntimeOptions): Runtime {
   const { device } = options;
@@ -64,7 +64,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
   const random = options.random ?? Math.random;
   const enterListeners: Listeners<BlockEvent> = new Set();
   const exitListeners: Listeners<BlockEvent> = new Set();
-  const errorListeners: Listeners<ErrorEvent> = new Set();
+  const errorListeners: Listeners<RuntimeErrorEvent> = new Set();
   const finishedListeners: Listeners<RunResult> = new Set();
   let current: Execution | undefined;
 

@@ -5,7 +5,7 @@ export type { Runtime, RuntimeOptions } from "./runtime.js";
 export { RuntimeError } from "./types.js";
 export type {
   BlockEvent,
-  ErrorEvent,
+  RuntimeErrorEvent,
   RunReason,
   RunResult,
   RuntimeErrorCode,
