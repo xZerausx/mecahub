@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import * as Blockly from "blockly/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "../../../../content/i18n/en.json";
 import es from "../../../../content/i18n/es.json";
@@ -239,6 +240,14 @@ describe("EditorPage", () => {
       expect(document.activeElement).toBe(stop);
       key("Tab", { shiftKey: true });
       expect(document.activeElement).toBe(confirm);
+    });
+
+    it("closes any open Blockly widget (dropdown, tooltip) when the modal opens", () => {
+      const spy = vi.spyOn(Blockly.WorkspaceSvg.prototype, "hideChaff");
+      mount(fakeController());
+      act(() => button(en["editor.level.advanced"])?.click());
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
 
     it("halts the robot as soon as the modal opens, and STOP stays usable behind it", () => {

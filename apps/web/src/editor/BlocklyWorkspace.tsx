@@ -8,6 +8,8 @@ import { workspaceOptions } from "./blockly-setup.js";
 export interface WorkspaceApi {
   /** The JSON of `Blockly.serialization.workspaces.save`. */
   save(): unknown;
+  /** Closes Blockly's open widgets (dropdowns, tooltips, context menus). */
+  hideChaff(): void;
 }
 
 export const ERROR_CLASS = "mh-block-error";
@@ -42,7 +44,10 @@ export function BlocklyWorkspace(props: Props) {
     const ws = Blockly.inject(host, workspaceOptions(level, locale));
     workspace.current = ws;
     Blockly.serialization.workspaces.load(saved.current ?? initialState(), ws);
-    apiRef.current = { save: () => Blockly.serialization.workspaces.save(ws) };
+    apiRef.current = {
+      save: () => Blockly.serialization.workspaces.save(ws),
+      hideChaff: () => ws.hideChaff(),
+    };
     const resize = () => Blockly.svgResize(ws);
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(resize);
     observer?.observe(host);

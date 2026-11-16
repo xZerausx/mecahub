@@ -116,6 +116,7 @@ export function EditorPage({ controller, locale, t }: Props) {
                   // A change of level halts the robot first, so the question never waits on a
                   // running program.
                   controller.stop();
+                  api.current?.hideChaff(); // an open dropdown must not hide behind the question
                   setConfirming(true);
                 } else setLevel(value);
               }}

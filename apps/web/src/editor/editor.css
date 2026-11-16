@@ -50,7 +50,11 @@
 .big-button.run {
   background: var(--go);
 }
+/* STOP is always the top layer: above Blockly's widget, dropdown and tooltip divs (z-index up to
+   100000 in 13.4.0; stop-layer.test.ts checks it) and above the modal backdrop. */
 .big-button.stop {
+  position: relative;
+  z-index: 100001;
   background: var(--halt);
 }
 .big-button:active:not(:disabled) {
@@ -216,10 +220,4 @@ body {
 }
 .big-button.confirm {
   background: var(--go);
-}
-
-/* While the modal is open the backdrop covers the page: STOP is raised above it, always. */
-.editor.confirming .big-button.stop {
-  position: relative;
-  z-index: 101;
 }

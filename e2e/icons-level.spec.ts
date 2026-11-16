@@ -155,6 +155,17 @@ for (const l of LOCALES) {
       await expect(page.getByRole("dialog")).toBeVisible(); // STOP does not dismiss the question
     });
 
+    test("STOP works with a Blockly dropdown open during a run", async ({ page }) => {
+      await dragUnderStack(page, l.forward);
+      await dragUnderStack(page, l.led);
+      await page.getByRole("button", { name: l.run }).click();
+      await expect.poll(() => moving(page), { timeout: 10_000 }).toBe(true);
+      await page.locator(`${MAIN_SVG} .blocklyDropdownField`).click();
+      await expect(page.locator(".blocklyDropdownMenu")).toBeVisible();
+      await page.getByRole("button", { name: l.stop }).click(); // no force: it must be hit
+      await expect.poll(() => moving(page), { timeout: 2_000 }).toBe(false);
+    });
+
     test("Escape closes the modal as Cancel", async ({ page }) => {
       await page.getByRole("button", { name: l.advanced, exact: true }).click();
       await expect(page.getByRole("dialog")).toBeVisible();

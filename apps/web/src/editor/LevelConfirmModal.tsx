@@ -28,23 +28,18 @@ export function LevelConfirmModal({ t, stopButton, onCancel, onConfirm }: Props)
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Tab") return;
-      const order = [cancel.current, confirm.current, stopButton.current].filter(
-        (el): el is HTMLButtonElement => el !== null,
-      );
-      const at = order.indexOf(document.activeElement as HTMLButtonElement);
-      const next = order[(at + (event.shiftKey ? -1 : 1) + order.length) % order.length];
-      // Inside the trap the browser's own order is fine except at the two edges
-      const wraps = event.shiftKey ? at <= 0 : at === order.length - 1;
-      const elsewhere = at === -1;
-      if (wraps || elsewhere) {
+      // Trap order: Cancel, Confirm, STOP (outside the dialog, above the backdrop), then around.
+      const ring = [cancel.current, confirm.current, stopButton.current];
+      const [cancelEl, confirmEl, stopEl] = ring;
+      const active = document.activeElement;
+      let target: HTMLElement | null | undefined;
+      if (!active || !ring.includes(active as HTMLButtonElement)) target = cancelEl;
+      else if (active === confirmEl) target = event.shiftKey ? cancelEl : stopEl;
+      else if (active === stopEl) target = event.shiftKey ? confirmEl : cancelEl;
+      else if (active === cancelEl && event.shiftKey) target = stopEl;
+      if (target) {
         event.preventDefault();
-        (elsewhere ? order[0] : next)?.focus();
-      } else if (at === 1 && !event.shiftKey) {
-        event.preventDefault(); // Confirm -> STOP (it is before the dialog in the DOM)
-        order[2]?.focus();
-      } else if (at === 2 && event.shiftKey) {
-        event.preventDefault();
-        order[1]?.focus();
+        target.focus();
       }
     };
     window.addEventListener("keydown", onKey);
