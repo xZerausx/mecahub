@@ -5,7 +5,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 const FLYOUT_BG = "svg.blocklyFlyout:not(.blocklyTrashcanFlyout) .blocklyFlyoutBackground";
 const fillOpacity = (page: Page) =>
-  page.locator(FLYOUT_BG).first().evaluate((el) => getComputedStyle(el).fillOpacity);
+  page
+    .locator(FLYOUT_BG)
+    .first()
+    .evaluate((el) => getComputedStyle(el).fillOpacity);
 
 test.describe("flyout opacity", () => {
   test("Icons: solid flyout", async ({ page }) => {
