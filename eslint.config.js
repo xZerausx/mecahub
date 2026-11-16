@@ -11,6 +11,7 @@ const nodeOnlyPackages = [
   "packages/hub/**",
   "packages/runtime/**",
   "packages/simulator/**",
+  "packages/ir/**",
 ];
 
 const reactImports = {
