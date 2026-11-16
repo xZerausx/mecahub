@@ -181,5 +181,14 @@
   "blocks.mh_logic.option.or": "o",
   "blocks.mh_not.message": "no %1",
   "blocks.mh_not.tooltip": "Verdadero cuando la condición es falsa.",
-  "blocks.variable.default": "elemento"
+  "blocks.variable.default": "elemento",
+  "blocks.category.events": "Eventos",
+  "blocks.category.motors": "Motores",
+  "blocks.category.drive": "Movimiento",
+  "blocks.category.lightSound": "Luz y sonido",
+  "blocks.category.control": "Control",
+  "blocks.category.variables": "Variables",
+  "blocks.category.sensors": "Sensores",
+  "blocks.category.math": "Números",
+  "blocks.category.logic": "Lógica"
 }

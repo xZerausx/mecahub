@@ -18,4 +18,11 @@ describe("@mecahub/blocks", () => {
     const state = blocks.decompile({ irVersion: 1, variables: [], scripts: [] });
     expect(state.blocks.blocks).toEqual([]);
   });
+
+  it("exports the definitions, the toolbox and the spec", () => {
+    expect(blocks.blockDefinitions).toBeTypeOf("function");
+    expect(blocks.toolbox).toBeTypeOf("function");
+    expect(blocks.BLOCK_SPECS.length).toBeGreaterThan(0);
+    expect(blocks.messageKeys()).toContain("blocks.mh_wait.message");
+  });
 });

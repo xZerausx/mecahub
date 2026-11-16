@@ -181,5 +181,14 @@
   "blocks.mh_logic.option.or": "or",
   "blocks.mh_not.message": "not %1",
   "blocks.mh_not.tooltip": "True when the condition is false.",
-  "blocks.variable.default": "item"
+  "blocks.variable.default": "item",
+  "blocks.category.events": "Events",
+  "blocks.category.motors": "Motors",
+  "blocks.category.drive": "Movement",
+  "blocks.category.lightSound": "Light and sound",
+  "blocks.category.control": "Control",
+  "blocks.category.variables": "Variables",
+  "blocks.category.sensors": "Sensors",
+  "blocks.category.math": "Numbers",
+  "blocks.category.logic": "Logic"
 }
