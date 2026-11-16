@@ -368,6 +368,125 @@ describe("invalid programs", () => {
   });
 });
 
+describe("limits (untrusted input)", () => {
+  const stopAll = (id: string) => ({ id, type: "stopAll" });
+  const program = (scripts: unknown[]) => ({ irVersion: 1, variables: [], scripts });
+  const script = (id: string, body: unknown[]) => ({ id, trigger: { type: "start" }, body });
+
+  it("rejects a huge program as too-large, fast", () => {
+    const body = Array.from({ length: 200_000 }, (_, i) => ({ id: `x${i}`, type: "bogus" }));
+    const started = performance.now();
+    const errors = errorsOf(program([script("s", body)]));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(errors).toEqual([expect.objectContaining({ path: "", code: "too-large" })]);
+  });
+
+  it("reports many invalid statements below the budget in bounded time and errors", () => {
+    const scripts = Array.from({ length: 150 }, (_, s) =>
+      script(
+        `s${s}`,
+        Array.from({ length: 100 }, (_, i) => ({ id: `x${s}-${i}`, type: "bogus" })),
+      ),
+    );
+    const started = performance.now();
+    const errors = errorsOf(program(scripts));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(errors.length).toBeLessThanOrEqual(100);
+  });
+
+  it("limits the number of scripts, variables and statements per body", () => {
+    const tooManyScripts = Array.from({ length: 201 }, (_, i) => script(`s${i}`, []));
+    expect(errorsOf(program(tooManyScripts))).toContainEqual(
+      expect.objectContaining({ path: "scripts", code: "too-many" }),
+    );
+    const vars = Array.from({ length: 501 }, (_, i) => ({
+      id: `v${i}`,
+      name: `n${i}`,
+      initial: 0,
+    }));
+    expect(errorsOf({ irVersion: 1, variables: vars, scripts: [] })).toContainEqual(
+      expect.objectContaining({ path: "variables", code: "too-many" }),
+    );
+    const longBody = Array.from({ length: 1001 }, (_, i) => stopAll(`x${i}`));
+    expect(errorsOf(program([script("s", longBody)]))).toContainEqual(
+      expect.objectContaining({ path: "scripts[0].body", code: "too-many" }),
+    );
+  });
+
+  it("accepts the maximum sizes", () => {
+    const body = Array.from({ length: 1000 }, (_, i) => stopAll(`x${i}`));
+    expect(validateProgram(program([script("s", body)])).ok).toBe(true);
+    const scripts = Array.from({ length: 200 }, (_, i) => script(`s${i}`, []));
+    expect(validateProgram(program(scripts)).ok).toBe(true);
+  });
+
+  it("caps the semantic errors too (15000 duplicate ids)", () => {
+    const scripts = Array.from({ length: 15 }, (_, s) =>
+      script(
+        `s${s}`,
+        Array.from({ length: 1000 }, () => stopAll("same")),
+      ),
+    );
+    const errors = errorsOf(program(scripts));
+    expect(errors.length).toBeLessThanOrEqual(100);
+    expect(errors.every((e) => e.code === "duplicate-id")).toBe(true);
+  });
+
+  it("returns a copy, not the caller's object", () => {
+    const data = load("01-square.json");
+    const result = validateProgram(data);
+    if (!result.ok) throw new Error("expected valid");
+    expect(result.program).toEqual(data);
+    expect(result.program).not.toBe(data);
+    expect(result.program.scripts[0]).not.toBe(data.scripts[0]);
+  });
+});
+
+describe("zero speed in *ForDegrees", () => {
+  const n = (value: number) => ({ type: "number", value });
+  const withBody = (stmt: unknown) => ({
+    irVersion: 1,
+    variables: [],
+    scripts: [{ id: "s", trigger: { type: "start" }, body: [stmt] }],
+  });
+  const motor = (speed: unknown) => ({
+    id: "m",
+    type: "motorRunForDegrees",
+    port: "A",
+    speed,
+    degrees: n(90),
+  });
+  const drive = (a: unknown, b: unknown) => ({
+    id: "d",
+    type: "driveForDegrees",
+    speedA: a,
+    speedB: b,
+    degrees: n(90),
+  });
+  const computedZero = {
+    type: "arithmetic",
+    op: "*",
+    left: n(0),
+    right: n(1),
+  };
+
+  it("rejects a literal 0 speed, since the motor would never turn", () => {
+    expect(errorsOf(withBody(motor(n(0))))).toContainEqual(
+      expect.objectContaining({ path: "scripts[0].body[0].speed", code: "zero-speed" }),
+    );
+    expect(errorsOf(withBody(drive(n(0), n(0))))).toContainEqual(
+      expect.objectContaining({ path: "scripts[0].body[0].speedA", code: "zero-speed" }),
+    );
+  });
+
+  it("accepts a pivot turn, computed zeros and timed commands at 0", () => {
+    expect(validateProgram(withBody(drive(n(0), n(50)))).ok).toBe(true);
+    expect(validateProgram(withBody(motor(computedZero))).ok).toBe(true);
+    const timed = { id: "t", type: "motorRunForTime", port: "A", speed: n(0), ms: n(100) };
+    expect(validateProgram(withBody(timed)).ok).toBe(true);
+  });
+});
+
 // mulberry32: deterministic, so CI is reproducible.
 const rng = (seed: number) => () => {
   seed = (seed + 0x6d2b79f5) | 0;

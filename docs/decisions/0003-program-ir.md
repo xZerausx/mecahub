@@ -35,12 +35,32 @@ Ranges of computed values (a variable used as a speed) are not statically known:
 
 ### Execution semantics
 
+Scheduling:
+
 - Scripts run in parallel.
-- An event whose script is still running is ignored: the script is not restarted and the event is not queued.
-- `forever` and `while` must yield to the scheduler on every iteration, so other scripts and STOP are never starved.
+- Triggers are edge-triggered: an event fires on the transition into its condition and re-arms once the condition is false again. An event whose script is still running is ignored: the script is not restarted and the event is not queued.
+- Every loop construct must yield to the scheduler: `forever` and `while` on every iteration, `repeat` on every iteration (also with an empty body) and `waitUntil` on every poll of its condition. Otherwise one script could starve the others and STOP.
 - `stopAll` halts every script and every motor (the STOP path, under 200 ms). `stopScript` ends only its own script.
 - Every statement has an `id` (the source block id) so the UI can highlight the running block.
+
+Motors:
+
+- Last command wins per port: a new command on a port replaces the running one on that port. A drive statement on AB replaces the commands on A and on B, and a command on A or B replaces the drive.
+- There is no separate "set speed" statement: use `motorStart` / `driveStart` again with the new speed.
+- Turning in place is `driveForDegrees` with opposite speeds; `degrees` is the rotation of each motor.
+- Speed 0 in a `*ForTime` statement waits the time with the motor stopped. A `*ForDegrees` statement with a literal speed of 0 is rejected by the validator (`zero-speed`; for the pair, only when both speeds are literal 0, since a pivot turn uses one wheel); a computed speed that evaluates to 0 skips the command.
+- The runtime clamps computed values: speed to -100..100, times, angles and counts to integers >= 0.
+
+Values:
+
 - Variables are numbers only in v1; the runtime resets them to `initial` when the program starts.
+- Division by zero gives 0. `mod` is the floored modulo (the result has the sign of the divisor) and `mod` by zero gives 0.
+- `playSound` does not block the script; to wait for a sound, use `wait`.
+- `motorPosition` is relative to the position at connect time. There is no reset block in v1 (a candidate for v2).
+
+### Limits
+
+`validateProgram` takes untrusted input, so it is bounded: at most 200 scripts, 500 variables and 1000 statements per list (schema `maxItems`, code `too-many`), and at most 20,000 objects and arrays in the whole program, counted iteratively before the schema runs (code `too-large`). With those bounds Ajv can report every error (`allErrors`) in bounded time, so there is a single validator. At most 100 errors are returned. On success the program is returned as a copy (`structuredClone`).
 
 ## Consequences
 

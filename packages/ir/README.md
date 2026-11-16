@@ -17,3 +17,5 @@ else for (const e of result.errors) console.log(e.path, e.code, e.message);
 `validateProgram` never throws. Layer 1 is the schema, layer 2 (unique ids, declared variables, literal `random` ranges) runs only if layer 1 passed. `code` is a stable key for UI i18n; `message` is developer-facing.
 
 Design, versioning and the execution rules (parallel scripts, event re-trigger, loop yielding, STOP) are in [docs/decisions/0003-program-ir.md](../../docs/decisions/0003-program-ir.md).
+
+Validation uses [Ajv](https://ajv.js.org/) 8 (MIT license).

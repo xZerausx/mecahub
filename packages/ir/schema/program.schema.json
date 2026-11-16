@@ -10,13 +10,17 @@
       "const": 1
     },
     "variables": {
+      "description": "At most 500 variables.",
       "type": "array",
+      "maxItems": 500,
       "items": {
         "$ref": "#/$defs/variable"
       }
     },
     "scripts": {
+      "description": "At most 200 scripts.",
       "type": "array",
+      "maxItems": 200,
       "items": {
         "$ref": "#/$defs/script"
       }
@@ -112,7 +116,7 @@
       "additionalProperties": false
     },
     "numericSensor": {
-      "description": "A numeric sensor read. color: the LWP3 color id (port C or D). distance: the sensor's raw distance level (port C or D; TODO(hw): calibrate to cm). motorPosition: degrees (port A-D). tiltX / tiltY: degrees, hub-frame sign is TODO(hw); no port.",
+      "description": "A numeric sensor read. color: the LWP3 color id (port C or D). distance: the sensor's raw distance level (port C or D; TODO(hw): calibrate to cm). motorPosition: degrees relative to the position at connect time (port A-D; there is no reset block in v1). tiltX / tiltY: degrees, hub-frame sign is TODO(hw); no port.",
       "type": "object",
       "properties": {
         "type": {
@@ -183,7 +187,7 @@
       ]
     },
     "arithmetic": {
-      "description": "Arithmetic on numbers. The runtime defines division and mod by zero (it must not crash).",
+      "description": "Arithmetic on numbers. Division by zero gives 0. mod is the floored modulo (the result has the sign of the divisor); mod by zero gives 0.",
       "type": "object",
       "properties": {
         "type": {
@@ -491,13 +495,15 @@
       ]
     },
     "statements": {
+      "description": "A list of statements (at most 1000 per list). May be empty.",
       "type": "array",
+      "maxItems": 1000,
       "items": {
         "$ref": "#/$defs/statement"
       }
     },
     "motorRunForTime": {
-      "description": "Runs one motor for a time, then brakes.",
+      "description": "Runs one motor for a time, then brakes. A new command on a port replaces the running one on that port (last command wins). Speed 0 waits the time with the motor stopped.",
       "type": "object",
       "properties": {
         "type": {
@@ -520,7 +526,7 @@
       "additionalProperties": false
     },
     "motorRunForDegrees": {
-      "description": "Turns one motor by an angle, then brakes.",
+      "description": "Turns one motor by an angle, then brakes. A number literal speed of 0 is rejected (the motor would never get there); a computed speed that evaluates to 0 skips the command.",
       "type": "object",
       "properties": {
         "type": {
@@ -543,7 +549,7 @@
       "additionalProperties": false
     },
     "motorStart": {
-      "description": "Starts one motor and continues with the next statement.",
+      "description": "Starts one motor and continues with the next statement. To change the speed, start it again with the new speed.",
       "type": "object",
       "properties": {
         "type": {
@@ -606,7 +612,7 @@
       "additionalProperties": false
     },
     "driveForDegrees": {
-      "description": "Turns the AB pair by an angle, then brakes.",
+      "description": "Turns the AB pair by an angle (each motor turns by degrees; turning in place is opposite speeds), then brakes. Both speeds being number literal 0 is rejected; a computed 0 skips the command.",
       "type": "object",
       "properties": {
         "type": {
@@ -683,7 +689,7 @@
       "additionalProperties": false
     },
     "playSound": {
-      "description": "Plays a sound on the device running the app (not on the hub).",
+      "description": "Plays a sound on the device running the app (not on the hub). Does not block the script.",
       "type": "object",
       "properties": {
         "type": {
@@ -717,7 +723,7 @@
       "additionalProperties": false
     },
     "waitUntil": {
-      "description": "Waits until the condition is true; the runtime re-evaluates it on every scheduler tick.",
+      "description": "Waits until the condition is true. Runtime rule: every poll of the condition must yield to the scheduler, so other scripts and STOP are never starved.",
       "type": "object",
       "properties": {
         "type": {
@@ -734,7 +740,7 @@
       "additionalProperties": false
     },
     "repeat": {
-      "description": "Runs the body a fixed number of times.",
+      "description": "Runs the body a fixed number of times. Runtime rule: must yield to the scheduler on every iteration (also when the body is empty).",
       "type": "object",
       "properties": {
         "type": {
@@ -754,7 +760,7 @@
       "additionalProperties": false
     },
     "forever": {
-      "description": "Runs the body until the script is stopped. Runtime rule: the loop must yield to the scheduler on every iteration, so other scripts and STOP are never starved.",
+      "description": "Runs the body until the script is stopped. Runtime rule: the loop must yield to the scheduler on every iteration (also when the body is empty), so other scripts and STOP are never starved.",
       "type": "object",
       "properties": {
         "type": {
@@ -962,7 +968,7 @@
       "additionalProperties": false
     },
     "colorSeenTrigger": {
-      "description": "Fires when the sensor on the port starts reporting the color.",
+      "description": "Edge-triggered: fires on the transition into the condition and re-arms once it is false again. Ignored while its script runs.",
       "type": "object",
       "properties": {
         "type": {
@@ -979,7 +985,7 @@
       "additionalProperties": false
     },
     "distanceBelowTrigger": {
-      "description": "Fires when the distance reading drops below value. Unit: the sensor's raw distance level (TODO(hw): calibrate to cm).",
+      "description": "Edge-triggered (fires when the reading drops below value, re-arms when it is back at or above). Unit: the sensor's raw distance level (TODO(hw): calibrate to cm).",
       "type": "object",
       "properties": {
         "type": {
@@ -997,7 +1003,7 @@
       "additionalProperties": false
     },
     "tiltTrigger": {
-      "description": "Fires when the hub is tilted in the direction.",
+      "description": "Edge-triggered: fires when the hub is tilted into the direction, re-arms once it is back.",
       "type": "object",
       "properties": {
         "type": {
@@ -1011,7 +1017,7 @@
       "additionalProperties": false
     },
     "buttonPressedTrigger": {
-      "description": "Fires when the hub button is pressed.",
+      "description": "Fires on each button press (edge-triggered).",
       "type": "object",
       "properties": {
         "type": {

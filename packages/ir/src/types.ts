@@ -169,55 +169,117 @@ export type Program = { irVersion: typeof IR_VERSION; variables: Variable[]; scr
 
 // ----------------------------------------------- field tables (drift guard, see schema.test.ts)
 
-type AllKeys<T> = T extends unknown ? keyof T : never;
-type FieldsOf<U extends { type: string }> = {
-  [K in U["type"]]: Record<AllKeys<Extract<U, { type: K }>>, true>;
+type Eq<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+/** What a field holds, as the schema's `$ref` targets name it. A field of any other type fails to compile. */
+type Kind<V> =
+  Eq<V, NumericExpression> extends true
+    ? "numeric"
+    : Eq<V, BooleanExpression> extends true
+      ? "boolean"
+      : Eq<V, Statement[]> extends true
+        ? "statements"
+        : Eq<V, MotorPort> extends true
+          ? "motorPort"
+          : Eq<V, SensorPort> extends true
+            ? "sensorPort"
+            : Eq<V, Color> extends true
+              ? "color"
+              : Eq<V, SensedColor> extends true
+                ? "sensedColor"
+                : Eq<V, Sound> extends true
+                  ? "sound"
+                  : Eq<V, StopMode> extends true
+                    ? "stopMode"
+                    : Eq<V, TiltDirection> extends true
+                      ? "tiltDirection"
+                      : Eq<V, ArithmeticOp> extends true
+                        ? "arithmeticOp"
+                        : Eq<V, CompareOp> extends true
+                          ? "compareOp"
+                          : Eq<V, LogicOp> extends true
+                            ? "logicOp"
+                            : Eq<V, "button"> extends true
+                              ? "button"
+                              : Eq<V, number> extends true
+                                ? "number"
+                                : Eq<V, boolean> extends true
+                                  ? "boolean-literal"
+                                  : Eq<V, string> extends true
+                                    ? "id"
+                                    : never;
+
+/** Per field (without the `type` discriminant): its slot kind and whether it is required. */
+type Slots<T> = {
+  [P in keyof T as P extends "type" ? never : P]-?: {
+    kind: Kind<NonNullable<T[P]>>;
+    required: Record<never, never> extends Pick<T, P> ? false : true;
+  };
 };
+type FieldsOf<U extends { type: string }> = { [K in U["type"]]: Slots<Extract<U, { type: K }>> };
+
+const NUM = { kind: "numeric", required: true } as const;
+const BOOL = { kind: "boolean", required: true } as const;
+const BODY = { kind: "statements", required: true } as const;
+const ID = { kind: "id", required: true } as const;
+const PORT = { kind: "motorPort", required: true } as const;
+const SPORT = { kind: "sensorPort", required: true } as const;
+const MODE = { kind: "stopMode", required: true } as const;
 
 export const STATEMENT_FIELDS: FieldsOf<Statement> = {
-  motorRunForTime: { id: true, type: true, port: true, speed: true, ms: true },
-  motorRunForDegrees: { id: true, type: true, port: true, speed: true, degrees: true },
-  motorStart: { id: true, type: true, port: true, speed: true },
-  motorStop: { id: true, type: true, port: true, mode: true },
-  driveForTime: { id: true, type: true, speedA: true, speedB: true, ms: true },
-  driveForDegrees: { id: true, type: true, speedA: true, speedB: true, degrees: true },
-  driveStart: { id: true, type: true, speedA: true, speedB: true },
-  driveStop: { id: true, type: true, mode: true },
-  setLed: { id: true, type: true, color: true },
-  playSound: { id: true, type: true, sound: true },
-  wait: { id: true, type: true, ms: true },
-  waitUntil: { id: true, type: true, condition: true },
-  repeat: { id: true, type: true, times: true, body: true },
-  forever: { id: true, type: true, body: true },
-  while: { id: true, type: true, condition: true, body: true },
-  if: { id: true, type: true, condition: true, then: true, else: true },
-  setVariable: { id: true, type: true, variable: true, value: true },
-  changeVariable: { id: true, type: true, variable: true, by: true },
-  stopAll: { id: true, type: true },
-  stopScript: { id: true, type: true },
+  motorRunForTime: { id: ID, port: PORT, speed: NUM, ms: NUM },
+  motorRunForDegrees: { id: ID, port: PORT, speed: NUM, degrees: NUM },
+  motorStart: { id: ID, port: PORT, speed: NUM },
+  motorStop: { id: ID, port: PORT, mode: MODE },
+  driveForTime: { id: ID, speedA: NUM, speedB: NUM, ms: NUM },
+  driveForDegrees: { id: ID, speedA: NUM, speedB: NUM, degrees: NUM },
+  driveStart: { id: ID, speedA: NUM, speedB: NUM },
+  driveStop: { id: ID, mode: MODE },
+  setLed: { id: ID, color: { kind: "color", required: true } },
+  playSound: { id: ID, sound: { kind: "sound", required: true } },
+  wait: { id: ID, ms: NUM },
+  waitUntil: { id: ID, condition: BOOL },
+  repeat: { id: ID, times: NUM, body: BODY },
+  forever: { id: ID, body: BODY },
+  while: { id: ID, condition: BOOL, body: BODY },
+  if: { id: ID, condition: BOOL, then: BODY, else: { kind: "statements", required: false } },
+  setVariable: { id: ID, variable: ID, value: NUM },
+  changeVariable: { id: ID, variable: ID, by: NUM },
+  stopAll: { id: ID },
+  stopScript: { id: ID },
 };
 
 export const TRIGGER_FIELDS: FieldsOf<Trigger> = {
-  start: { type: true },
-  colorSeen: { type: true, port: true, color: true },
-  distanceBelow: { type: true, port: true, value: true },
-  tilt: { type: true, direction: true },
-  buttonPressed: { type: true },
+  start: {},
+  colorSeen: { port: SPORT, color: { kind: "sensedColor", required: true } },
+  distanceBelow: { port: SPORT, value: { kind: "number", required: true } },
+  tilt: { direction: { kind: "tiltDirection", required: true } },
+  buttonPressed: {},
 };
 
-export const NUMERIC_EXPRESSION_FIELDS: FieldsOf<NumericExpression> = {
-  number: { type: true, value: true },
-  variable: { type: true, variable: true },
-  sensor: { type: true, sensor: true, port: true },
-  arithmetic: { type: true, op: true, left: true, right: true },
-  random: { type: true, min: true, max: true },
+// `sensor` has three shapes in the types (port required on C/D, on A-D, or forbidden); the schema
+// states the combinations as if/then rules, tested in validate.test.ts. The table lists the union.
+export const NUMERIC_EXPRESSION_FIELDS: FieldsOf<Exclude<NumericExpression, { type: "sensor" }>> & {
+  sensor: {
+    sensor: { kind: "numericSensor"; required: true };
+    port: { kind: "motorPort"; required: false };
+  };
+} = {
+  number: { value: { kind: "number", required: true } },
+  variable: { variable: ID },
+  sensor: {
+    sensor: { kind: "numericSensor", required: true },
+    port: { kind: "motorPort", required: false },
+  },
+  arithmetic: { op: { kind: "arithmeticOp", required: true }, left: NUM, right: NUM },
+  random: { min: NUM, max: NUM },
 };
 
 export const BOOLEAN_EXPRESSION_FIELDS: FieldsOf<BooleanExpression> = {
-  boolean: { type: true, value: true },
-  sensor: { type: true, sensor: true },
-  compare: { type: true, op: true, left: true, right: true },
-  logic: { type: true, op: true, left: true, right: true },
-  not: { type: true, operand: true },
-  colorIs: { type: true, port: true, color: true },
+  boolean: { value: { kind: "boolean-literal", required: true } },
+  sensor: { sensor: { kind: "button", required: true } },
+  compare: { op: { kind: "compareOp", required: true }, left: NUM, right: NUM },
+  logic: { op: { kind: "logicOp", required: true }, left: BOOL, right: BOOL },
+  not: { operand: BOOL },
+  colorIs: { port: SPORT, color: { kind: "sensedColor", required: true } },
 };

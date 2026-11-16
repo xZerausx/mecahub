@@ -25,7 +25,7 @@ Enforced by tsconfig (`lib` without DOM), Vitest `node` environment and an ESLin
 
 ## Programs run as IR through an interpreter
 
-Blocks compile to a small intermediate representation executed by `runtime`, instead of generating and eval-ing JavaScript. Reasons: the original firmware cannot run user code, so the host must drive the hub; an interpreter can be stepped, paused and stopped at any instruction (STOP < 200 ms), is deterministic for tests, safe for kids' content, and needs no `eval` (CSP-friendly).
+Blocks compile to a small intermediate representation executed by `runtime`, instead of generating and eval-ing JavaScript. Reasons: the original firmware cannot run user code, so the host must drive the hub; an interpreter can be stepped, paused and stopped at any instruction (STOP < 200 ms), is deterministic for tests, safe for kids' content, and needs no `eval` (CSP-friendly). (Program execution needs no eval; IR validation uses Ajv's compiled functions until a CSP requires the standalone validator, see [0003](0003-program-ir.md).)
 
 ## Consequences
 

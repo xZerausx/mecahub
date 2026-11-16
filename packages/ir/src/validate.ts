@@ -7,6 +7,30 @@ export type ValidationResult =
   { ok: true; program: Program } | { ok: false; errors: ValidationError[] };
 
 const MAX_ERRORS = 100;
+/**
+ * Upper bound of objects and arrays in one program, checked before the schema runs. Ajv reports
+ * every error (allErrors), which is superlinear on huge invalid input; the budget (and the schema's
+ * maxItems) bound that work, so one validator with allErrors is enough.
+ */
+const MAX_NODES = 20_000;
+
+/** Counts objects and arrays iteratively (no recursion, terminates on cycles). */
+const withinBudget = (root: unknown): boolean => {
+  let count = 0;
+  const stack: unknown[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== "object") continue;
+    if (++count > MAX_NODES) return false;
+    if (Array.isArray(node)) {
+      if (node.length > MAX_NODES) return false;
+      for (const child of node) stack.push(child);
+    } else {
+      for (const child of Object.values(node)) stack.push(child);
+    }
+  }
+  return true;
+};
 
 let compiled: ValidateFunction | undefined;
 /** Compiled on first use, once. */
@@ -106,6 +130,8 @@ const fromAjv = (e: ErrorObject, root: unknown): ValidationError | undefined => 
     case "exclusiveMinimum":
     case "exclusiveMaximum":
       return make(here, "out-of-range", message);
+    case "maxItems":
+      return make(here, "too-many", message);
     case "minLength":
       return make(here, "too-short", "must not be empty");
     case "false schema":
@@ -134,8 +160,9 @@ const schemaErrors = (errors: ErrorObject[], root: unknown): ValidationError[] =
 
 const semanticErrors = (program: Program): ValidationError[] => {
   const errors: ValidationError[] = [];
-  const add = (path: string, code: string, message: string) =>
-    errors.push({ path, code, message: `${path}: ${message}` });
+  const add = (path: string, code: string, message: string) => {
+    if (errors.length < MAX_ERRORS) errors.push({ path, code, message: `${path}: ${message}` });
+  };
 
   const variableIds = new Set<string>();
   const variableNames = new Set<string>();
@@ -157,6 +184,10 @@ const semanticErrors = (program: Program): ValidationError[] => {
   const checkVariable = (id: string, path: string) => {
     if (!variableIds.has(id)) add(path, "undeclared-variable", `variable "${id}" is not declared`);
   };
+
+  const isZero = (e: Expression) => e.type === "number" && e.value === 0;
+  const zero = (path: string) =>
+    add(path, "zero-speed", "a literal speed of 0 never reaches the requested degrees");
 
   const expression = (node: Expression, path: string): void => {
     switch (node.type) {
@@ -229,14 +260,20 @@ const semanticErrors = (program: Program): ValidationError[] => {
           expression(s.speedA, append(p, "speedA"));
           expression(s.speedB, append(p, "speedB"));
           if (s.type === "driveForTime") expression(s.ms, append(p, "ms"));
-          if (s.type === "driveForDegrees") expression(s.degrees, append(p, "degrees"));
+          if (s.type === "driveForDegrees") {
+            if (isZero(s.speedA) && isZero(s.speedB)) zero(append(p, "speedA"));
+            expression(s.degrees, append(p, "degrees"));
+          }
           return;
         case "motorStart":
         case "motorRunForTime":
         case "motorRunForDegrees":
           expression(s.speed, append(p, "speed"));
           if (s.type === "motorRunForTime") expression(s.ms, append(p, "ms"));
-          if (s.type === "motorRunForDegrees") expression(s.degrees, append(p, "degrees"));
+          if (s.type === "motorRunForDegrees") {
+            if (isZero(s.speed)) zero(append(p, "speed"));
+            expression(s.degrees, append(p, "degrees"));
+          }
           return;
         default:
           return;
@@ -260,28 +297,33 @@ const semanticErrors = (program: Program): ValidationError[] => {
  * Error `code`s are stable keys for the UI to map to i18n later; `message` is developer-facing English.
  */
 export const validateProgram = (value: unknown): ValidationResult => {
+  let validate: ValidateFunction;
   try {
-    const validate = schemaValidator();
+    validate = schemaValidator();
+  } catch {
+    return fail("internal", "the schema validator could not be built");
+  }
+  try {
+    if (!withinBudget(value)) {
+      return fail("too-large", `the program has more than ${MAX_NODES} objects and arrays`);
+    }
     if (!validate(value)) {
       return { ok: false, errors: schemaErrors(validate.errors ?? [], value) };
     }
-    const program = value as Program;
-    const errors = semanticErrors(program);
-    return errors.length === 0 ? { ok: true, program } : { ok: false, errors };
+    const errors = semanticErrors(value as Program);
+    // A copy: the caller keeps its own object, and the runtime gets one nobody else can mutate.
+    return errors.length === 0
+      ? { ok: true, program: structuredClone(value) as Program }
+      : { ok: false, errors };
   } catch (error) {
-    // Stack overflow on absurdly deep or cyclic input, or a hostile getter/proxy.
-    const tooDeep = error instanceof RangeError;
-    return {
-      ok: false,
-      errors: [
-        {
-          path: "",
-          code: tooDeep ? "too-deep" : "unreadable",
-          message: tooDeep
-            ? "the program is nested too deeply (or contains a cycle)"
-            : "the value could not be read",
-        },
-      ],
-    };
+    // Stack overflow on absurdly deep input, or a hostile getter/proxy.
+    return error instanceof RangeError
+      ? fail("too-deep", "the program is nested too deeply")
+      : fail("unreadable", "the value could not be read");
   }
 };
+
+const fail = (code: string, message: string): ValidationResult => ({
+  ok: false,
+  errors: [{ path: "", code, message }],
+});
