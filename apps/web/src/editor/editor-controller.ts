@@ -152,6 +152,13 @@ export function createEditorController(options: EditorControllerOptions = {}): E
     return connecting;
   };
 
+  // The link can die under us (a STOP write that missed its deadline makes the transport drop it).
+  // Forget the old connection so the next Run connects again instead of failing "not-connected".
+  const offDisconnect = transport.onDisconnect(() => {
+    connecting = undefined;
+    if (!disposed && snapshot.connection !== "idle") publish({ connection: "idle" });
+  });
+
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
@@ -205,6 +212,7 @@ export function createEditorController(options: EditorControllerOptions = {}): E
     dispose() {
       disposed = true;
       for (const off of offs) off();
+      offDisconnect();
       runtime.stop();
       moveHub.dispose();
       transport.dispose();

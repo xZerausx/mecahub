@@ -56,3 +56,42 @@ test("Run shows the robot doing something in the preview", async ({ page }) => {
   const seen = await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
   expect(seen.some((s) => s.endsWith("forward forward"))).toBe(true);
 });
+
+// Any Advanced block needs a level switch, and the switch sends a STOP while Blockly re-injects:
+// the busy main thread made that STOP miss its deadline, the transport dropped the link and the
+// next Run failed with "not-connected" and showed nothing.
+test("Run still shows activity after switching to Advanced and adding an Advanced block", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(stacks(page)).toHaveCount(1);
+  await page.getByRole("button", { name: "Advanced level", exact: true }).click();
+  await page.locator(".blocklyToolboxCategory").nth(1).click(); // Motors
+  const flyoutBlock = page.locator(`${FLYOUT_SVG} .blocklyDraggable`).first();
+  await expect(flyoutBlock).toBeVisible();
+  const from = await box(flyoutBlock);
+  const flag = await box(stacks(page).first());
+  const grab = { x: from.x + 10, y: from.y + 10 };
+  const target = { x: flag.x + 12, y: flag.y + flag.height + 20 };
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 10 });
+  await page.mouse.up();
+  await expect(stacks(page)).toHaveCount(1); // snapped under the flag
+  await expect(page.locator(`${MAIN_SVG} .blocklyEditableField`).first()).toBeVisible();
+
+  await page.evaluate(() => {
+    const el = document.querySelector(".sim-preview") as Element;
+    const w = window as unknown as { __seen: string[] };
+    w.__seen = [];
+    new MutationObserver(() =>
+      w.__seen.push(["data-wheel-a", "data-wheel-b"].map((a) => el.getAttribute(a)).join(" ")),
+    ).observe(el, { attributes: true });
+  });
+  await page.getByRole("button", { name: "Run the program" }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __seen: string[] }).__seen), {
+      timeout: 10_000,
+    })
+    .toContain("forward stopped");
+});

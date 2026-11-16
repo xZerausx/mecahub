@@ -156,3 +156,19 @@ describe("STOP", () => {
     expect(moving(c)).toBe(false);
   });
 });
+
+describe("a dropped link", () => {
+  // A STOP write that cannot be sent within its 150 ms deadline (a busy main thread, e.g. while
+  // Blockly re-injects on a level change) makes the transport declare the link dead. The next Run
+  // must reconnect instead of failing with "not-connected" and showing nothing.
+  it("is recovered: after a STOP that missed its deadline, Run connects again and runs", async () => {
+    const c = await make(120); // slow writes: the second STOP write misses its deadline
+    c.stop(); // idle STOP, as on a level change
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(c.getSnapshot().connection).toBe("idle"); // it noticed the link is gone
+    const result = c.run(forwardProgram());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await result).toBe("completed");
+    expect(c.getSnapshot().connection).toBe("connected");
+  });
+});
