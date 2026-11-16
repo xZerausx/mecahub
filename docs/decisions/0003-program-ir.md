@@ -90,7 +90,8 @@ The Advanced level edits the IR through Blockly blocks (`compile` / `decompile`,
 
 - Compile: a literal (block or shadow) becomes `Math.round(seconds * 1000)`; any other expression becomes `arithmetic * 1000`.
 - Decompile: a ms literal shows as `ms / 1000`; `x * 1000` (literal 1000 on the right, non-literal `x`) is unwrapped to `x`; any other ms expression is wrapped in `/ 1000`. That last shape round-trips to `(x / 1000) * 1000`, which means the same thing.
-- Block variables have no initial value, so they compile with `initial: 0`.
+- Sub-millisecond seconds round to 0 ms and non-integer IR milliseconds round on the way back. A literal above 3600 seconds is a compile error (`bad-field`).
+- Block variables have no initial value, so they compile with `initial: 0`; `decompile` reports a dropped non-zero initial as a `variable-initial-dropped` warning.
 
 ## Consequences
 

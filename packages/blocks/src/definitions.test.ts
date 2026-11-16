@@ -50,6 +50,17 @@ describe.each(Object.keys(catalogs))("block messages (%s)", (locale) => {
   });
 });
 
+describe("wording for kids", () => {
+  it("avoids programmer jargon and regional words in every block text", () => {
+    for (const [locale, catalog] of Object.entries(catalogs)) {
+      for (const [key, text] of Object.entries(catalog)) {
+        if (!key.startsWith("blocks.")) continue;
+        expect(text, `${locale} ${key}`).not.toMatch(/script|parlante|altavoz|ejecuta/i);
+      }
+    }
+  });
+});
+
 describe("time is shown in seconds", () => {
   it("says seconds in every message of a block with a time input", () => {
     const timed = BLOCK_SPECS.filter((b) =>
