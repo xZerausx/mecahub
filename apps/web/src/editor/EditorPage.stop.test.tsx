@@ -14,9 +14,17 @@ import { STOP_BUDGET_MS, createEditorController } from "./editor-controller.js";
 afterEach(() => vi.useRealTimers());
 
 describe("switching level while a program runs", () => {
-  it("halts every motor within STOP_BUDGET_MS", async () => {
-    vi.useFakeTimers();
+  it("halts every motor within STOP_BUDGET_MS", { timeout: 30_000 }, async () => {
+    // Real Blockly is injected in jsdom: that is slow under parallel load and is not STOP latency,
+    // so it happens before the fake clock starts and the timeout is generous.
     const controller = createEditorController({ simWriteLatencyMs: 30 });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(<EditorPage controller={controller} locale="en" t={createTranslator("en")} />),
+    );
+    vi.useFakeTimers();
     const connecting = controller.connect();
     await vi.advanceTimersByTimeAsync(300);
     await connecting;
@@ -40,12 +48,6 @@ describe("switching level while a program runs", () => {
       controller.getSnapshot().wheels.b !== "stopped";
     expect(moving()).toBe(true);
 
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    const root = createRoot(host);
-    act(() =>
-      root.render(<EditorPage controller={controller} locale="en" t={createTranslator("en")} />),
-    );
     const t0 = Date.now();
     act(() =>
       host
