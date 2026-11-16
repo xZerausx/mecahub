@@ -1,12 +1,15 @@
 import { validateProgram } from "@mecahub/ir";
 import type { Program, Script } from "@mecahub/ir";
-import { Cancelled } from "./abortable.js";
+import { Cancelled, race, sleep } from "./abortable.js";
 import { PortArbiter } from "./arbiter.js";
 import { realRuntimeClock } from "./clock.js";
 import type { RuntimeClock } from "./clock.js";
 import type { RuntimeDevice, Unsubscribe } from "./device.js";
-import type { EvalEnv, SensorReadings } from "./expressions.js";
+import type { EvalEnv } from "./expressions.js";
 import { ScriptRunner } from "./interpreter.js";
+import { SensorCache, planProgram } from "./sensors.js";
+import type { SensorPlan } from "./sensors.js";
+import { EdgeDetector } from "./triggers.js";
 import { RuntimeError } from "./types.js";
 import type { BlockEvent, ErrorEvent, RunResult, SoundSink } from "./types.js";
 
@@ -49,13 +52,11 @@ const subscribe = <T>(listeners: Listeners<T>, listener: (event: T) => void): Un
   return () => void listeners.delete(listener);
 };
 
-const NO_SENSORS: SensorReadings = {
-  color: () => "none",
-  distance: () => 0,
-  tilt: () => ({ x: 0, y: 0 }),
-  button: () => false,
-  motorPosition: () => 0,
-};
+/**
+ * How long to wait for every subscribed sensor to report once before giving up. supuesto: the hub
+ * reports the current value right after a subscription is set up; no real capture of that yet. TODO(hw)
+ */
+export const FIRST_VALUE_TIMEOUT_MS = 2000;
 
 export function createRuntime(options: RuntimeOptions): Runtime {
   const { device } = options;
@@ -78,14 +79,143 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     private resolve!: (result: RunResult) => void;
     readonly result = new Promise<RunResult>((resolve) => (this.resolve = resolve));
 
+    private readonly cache = new SensorCache();
+    private readonly detectors: EdgeDetector[];
+    private readonly plan: SensorPlan;
+    private ready: (() => void) | undefined;
+    private started = false;
+
     constructor(private readonly program: Program) {
       for (const v of program.variables) this.variables.set(v.id, v.initial);
+      this.plan = planProgram(program);
+      this.detectors = program.scripts
+        .filter((script) => script.trigger.type !== "start")
+        .map((script) => new EdgeDetector(script));
     }
 
-    start(): void {
-      const scripts = this.program.scripts.filter((s) => s.trigger.type === "start");
-      for (const script of scripts) this.launch(script);
-      if (this.active.size === 0) this.finish("completed");
+    /** Checks the robot, subscribes to the sensors in use, then starts every start script together. */
+    async start(): Promise<void> {
+      const missing = this.plan.resources.filter((r) => !device.has(r));
+      if (missing.length > 0) {
+        // A refusal before anything started: nothing moved, so nothing needs a STOP.
+        this.finish(
+          "error",
+          new RuntimeError("missing-device", `the robot has no ${missing.join(", ")}`),
+          undefined,
+          undefined,
+          false,
+        );
+        return;
+      }
+      try {
+        await race(this.subscribeAll(), this.root.signal);
+        await this.awaitFirstValues();
+      } catch (err) {
+        if (!(err instanceof Cancelled)) this.fail(err);
+        return;
+      }
+      this.started = true;
+      for (const script of this.program.scripts) {
+        if (script.trigger.type === "start") this.launch(script);
+      }
+      this.evaluateTriggers();
+      if (this.active.size === 0 && this.detectors.length === 0) this.finish("completed");
+    }
+
+    private fail(err: unknown, scriptId?: string, statementId?: string): void {
+      const error =
+        err instanceof RuntimeError
+          ? err
+          : new RuntimeError("hub-error", err instanceof Error ? err.message : String(err), {
+              cause: err,
+            });
+      this.finish("error", error, scriptId, statementId);
+    }
+
+    private async subscribeAll(): Promise<void> {
+      const track = (pending: Promise<Unsubscribe>): Promise<void> =>
+        pending.then((off) => {
+          if (this.done) off();
+          else this.unsubscribers.push(off);
+        });
+      const { cache } = this;
+      const subs: Promise<void>[] = [];
+      for (const port of this.plan.colorDistance) {
+        subs.push(
+          track(
+            device.onColorAndDistance(port, (r) => {
+              cache.setColorDistance(port, r.color, r.distance);
+              this.sensorChanged();
+            }),
+          ),
+        );
+      }
+      for (const port of this.plan.positions) {
+        subs.push(
+          track(
+            device.motor(port).onPosition((degrees) => {
+              cache.setPosition(port, degrees);
+              this.sensorChanged();
+            }),
+          ),
+        );
+      }
+      if (this.plan.tilt) {
+        subs.push(
+          track(
+            device.onTilt((t) => {
+              cache.setTilt(t.x, t.y);
+              this.sensorChanged();
+            }),
+          ),
+        );
+      }
+      if (this.plan.button) {
+        subs.push(
+          track(
+            device.onButton((pressed) => {
+              cache.setButton(pressed);
+              this.sensorChanged();
+            }),
+          ),
+        );
+      }
+      await Promise.all(subs);
+    }
+
+    private async awaitFirstValues(): Promise<void> {
+      if (this.cache.ready(this.plan)) return;
+      const timer = new AbortController();
+      const signal = AbortSignal.any([this.root.signal, timer.signal]);
+      const reported = new Promise<void>((resolve) => (this.ready = resolve));
+      const timedOut = sleep(clock, FIRST_VALUE_TIMEOUT_MS, signal).then(() => {
+        throw new RuntimeError("sensor-timeout", "a sensor did not report a value");
+      });
+      try {
+        await race(Promise.race([reported, timedOut]), this.root.signal);
+      } finally {
+        timer.abort();
+        this.ready = undefined;
+      }
+    }
+
+    private sensorChanged(): void {
+      if (this.done) return;
+      if (!this.started) {
+        if (this.cache.ready(this.plan)) this.ready?.();
+        return;
+      }
+      this.evaluateTriggers();
+    }
+
+    /** Starts the event scripts whose condition just became true; an event for a running script is dropped. */
+    private evaluateTriggers(): void {
+      for (const detector of this.detectors) {
+        if (this.done) return;
+        if (detector.update(this.cache) && !this.active.has(detector.script.id)) {
+          this.launch(detector.script);
+        }
+      }
     }
 
     private launch(script: Script): void {
@@ -93,7 +223,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       const signal = AbortSignal.any([this.root.signal, own.signal]);
       const env: EvalEnv & { variables: Map<string, number> } = {
         variables: this.variables,
-        sensors: NO_SENSORS,
+        sensors: this.cache,
         random,
       };
       const runner = new ScriptRunner(
@@ -115,16 +245,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       runner.run().then(
         () => this.scriptEnded(script.id),
         (err: unknown) => {
-          if (!(err instanceof Cancelled)) {
-            this.finish(
-              "error",
-              new RuntimeError("hub-error", err instanceof Error ? err.message : String(err), {
-                cause: err,
-              }),
-              script.id,
-              runner.currentStatement,
-            );
-          }
+          if (!(err instanceof Cancelled)) this.fail(err, script.id, runner.currentStatement);
           this.scriptEnded(script.id);
         },
       );
@@ -132,7 +253,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
     private scriptEnded(scriptId: string): void {
       this.active.delete(scriptId);
-      if (this.active.size === 0) this.finish("completed");
+      if (this.active.size === 0 && this.detectors.length === 0) this.finish("completed");
     }
 
     /**
@@ -144,11 +265,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       error?: RuntimeError,
       scriptId?: string,
       statementId?: string,
+      stop = true,
     ) {
       if (this.done) return;
       this.done = true;
       this.root.abort();
-      if (reason !== "completed") stopDevice();
+      if (reason !== "completed" && stop) stopDevice();
       for (const off of this.unsubscribers.splice(0)) off();
       if (current === this) current = undefined;
       const result: RunResult = error ? { reason, error } : { reason };
@@ -206,7 +328,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       }
       const execution = new Execution(validated.program);
       current = execution;
-      execution.start();
+      void execution.start();
       return execution.result;
     },
 
