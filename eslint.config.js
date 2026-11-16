@@ -6,6 +6,13 @@ import tseslint from "typescript-eslint";
 const bluetoothMessage =
   "Use the BleTransport interface; navigator.bluetooth is only allowed in packages/transport/src/web.";
 
+const bluetoothRules = [
+  "MemberExpression[property.name='bluetooth'][object.name='navigator']",
+  "MemberExpression[property.name='bluetooth'][object.property.name='navigator']",
+  "VariableDeclarator[init.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
+  "VariableDeclarator[init.property.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
+].map((selector) => ({ selector, message: bluetoothMessage }));
+
 const nodeOnlyPackages = [
   "packages/lwp3/**",
   "packages/hub/**",
@@ -60,15 +67,7 @@ export default tseslint.config(
         },
       ],
       // Also catches window.navigator / globalThis.navigator and destructuring.
-      "no-restricted-syntax": [
-        "error",
-        ...[
-          "MemberExpression[property.name='bluetooth'][object.name='navigator']",
-          "MemberExpression[property.name='bluetooth'][object.property.name='navigator']",
-          "VariableDeclarator[init.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
-          "VariableDeclarator[init.property.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
-        ].map((selector) => ({ selector, message: bluetoothMessage })),
-      ],
+      "no-restricted-syntax": ["error", ...bluetoothRules],
     },
   },
   {
@@ -103,7 +102,19 @@ export default tseslint.config(
   {
     // blocks: a flat-config rule is replaced, not merged, so the lists are repeated once more.
     files: ["packages/blocks/**/*.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [reactImports, blocklyImports] }] },
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [reactImports, blocklyImports] }],
+      // Dynamic import("blockly") is not covered by no-restricted-imports; the Bluetooth selectors
+      // are repeated because this rule replaces the global one.
+      "no-restricted-syntax": [
+        "error",
+        ...bluetoothRules,
+        {
+          selector: "ImportExpression[source.value=/^blockly(\\/|$)/]",
+          message: "packages/blocks must run in Node: never load blockly at runtime.",
+        },
+      ],
+    },
   },
   {
     files: ["packages/blocks/**/*.ts"],
