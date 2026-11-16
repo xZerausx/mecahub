@@ -13,4 +13,9 @@ describe("@mecahub/blocks", () => {
       program: { irVersion: 1, variables: [], scripts: [] },
     });
   });
+
+  it("exports the decompiler", () => {
+    const state = blocks.decompile({ irVersion: 1, variables: [], scripts: [] });
+    expect(state.blocks.blocks).toEqual([]);
+  });
 });
