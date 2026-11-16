@@ -75,7 +75,9 @@ describe("ProblemBadge", () => {
   it("tapping it dismisses it", () => {
     const { onDismiss } = mount("hub-error");
     const tap = host.querySelector<HTMLButtonElement>("button.problem-badge");
-    expect(tap?.getAttribute("aria-label")).toBe(en["editor.problem.dismiss"]);
+    // the accessible name says WHAT is wrong and how to close it
+    expect(tap?.getAttribute("aria-label")).toContain(en["editor.problem.hubError"]);
+    expect(tap?.getAttribute("aria-label")).toContain(en["editor.problem.dismiss"]);
     act(() => tap?.click());
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });

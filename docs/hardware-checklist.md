@@ -65,6 +65,14 @@ Two different cases, because the hub is not known to react the same way.
   Open the app in Chrome or Edge." (or the Spanish one) is visible next to it; the simulator works.
 - Record: browser and version, a screenshot.
 
+## 7. Chooser left open while switching back
+
+- Steps: press Connect the robot, leave the chooser open, press Back to the simulator (or Esc), then
+  pick the hub in the chooser; also try hub -> simulator -> hub quickly.
+- Expected: no link to the hub survives (the editor refuses the late connect); a second chooser opens
+  normally. TODO(hw): what Chrome does on a second requestDevice while the first chooser is still
+  open is unverified.
+
 ## Results
 
 | Item | Date | Firmware | Browser / OS | Result | Evidence (file, video) |
@@ -75,3 +83,4 @@ Two different cases, because the hub is not known to react the same way.
 | 4    |      |          |              |        |                        |
 | 5    |      |          |              |        |                        |
 | 6    |      |          |              |        |                        |
+| 7    |      |          |              |        |                        |

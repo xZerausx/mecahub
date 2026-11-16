@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // The editor with a real hub as the device. Chromium has no hub to talk to, so:
@@ -49,7 +51,7 @@ test.describe("without Web Bluetooth", () => {
     });
     await page.goto("/");
     const button = connectButton(page);
-    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute("aria-disabled", "true");
     const note = page.locator(`#${await button.getAttribute("aria-describedby")}`);
     await expect(note).toHaveText(
       "This browser can't use Bluetooth. Open the app in Chrome or Edge.",
@@ -192,4 +194,18 @@ test("the fake hub is not in what is served to children (production build only)"
   expect(all).not.toContain("fakeHub");
   expect(all).not.toContain("VITE_E2E_FAKE_HUB");
   expect([...urls].some((u) => /fake/i.test(u))).toBe(false);
+
+  // and what the build left on disk (nothing may be shipped that the page does not load, either)
+  const dist = join(process.cwd(), "apps/web/dist");
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)],
+    );
+  const onDisk = files(dist).filter((file) => /\.(js|html|css|map|json)$/.test(file));
+  expect(onDisk.length).toBeGreaterThan(0);
+  for (const file of onDisk) {
+    const text = readFileSync(file, "utf8");
+    expect(text, file).not.toContain("fakeHub");
+    expect(text, file).not.toContain("VITE_E2E_FAKE_HUB");
+  }
 });

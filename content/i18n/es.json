@@ -20,7 +20,7 @@
   "editor.state.unknown": "no sabemos",
   "editor.hub.connect": "Conectar el robot",
   "editor.hub.disconnect": "Volver al simulador",
-  "editor.hub.connecting": "Conectando…",
+  "editor.hub.cancel": "Cancelar y volver al simulador",
   "editor.hub.unsupported": "Este navegador no puede usar Bluetooth. Abrí la app en Chrome o Edge.",
   "editor.problem.connectFailed": "No se pudo conectar el robot. Prendelo y acercalo.",
   "editor.problem.linkLost": "Se perdió la conexión con el robot.",

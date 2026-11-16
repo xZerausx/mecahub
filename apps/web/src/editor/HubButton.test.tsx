@@ -60,24 +60,30 @@ describe("HubButton", () => {
     },
   );
 
-  it("while connecting it says so, is visibly animated, and still lets the child go back", () => {
+  it("while connecting it offers to cancel, is visibly animated, and goes back to the simulator", () => {
     const { button, onUseSimulator } = mount({ source: "hub", connection: "connecting" });
-    expect(button.getAttribute("aria-label")).toBe(en["editor.hub.connecting"]);
+    expect(button.getAttribute("aria-label")).toBe(en["editor.hub.cancel"]);
     expect(button.getAttribute("data-connecting")).not.toBeNull();
     expect(button.getAttribute("aria-busy")).toBe("true");
     act(() => button.click());
     expect(onUseSimulator).toHaveBeenCalledTimes(1);
   });
 
-  it("where Bluetooth is not available it is disabled and explains why (aria-describedby)", () => {
+  it("where Bluetooth is not available it is aria-disabled (still focusable) and explains why", () => {
     const { button, onUseHub } = mount({ available: false });
-    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.disabled).toBe(false); // focusable: keyboard and screen-reader users reach the note
     const id = button.getAttribute("aria-describedby");
     expect(id).toBeTruthy();
     const note = host.querySelector(`#${id}`);
     expect(note?.textContent).toBe(en["editor.hub.unsupported"]);
     act(() => button.click());
     expect(onUseHub).not.toHaveBeenCalled();
+  });
+
+  it("speaks the cancel label in Spanish", () => {
+    const { button } = mount({ source: "hub", connection: "connecting" }, "es");
+    expect(button.getAttribute("aria-label")).toBe(es["editor.hub.cancel"]);
   });
 
   it("has no explanation to read when Bluetooth works", () => {

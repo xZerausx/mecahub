@@ -26,7 +26,7 @@ export function HubButton({
   const onHub = source === "hub";
   const connecting = onHub && connection === "connecting";
   const label = connecting
-    ? t("editor.hub.connecting")
+    ? t("editor.hub.cancel")
     : onHub
       ? t("editor.hub.disconnect")
       : t("editor.hub.connect");
@@ -41,8 +41,9 @@ export function HubButton({
         aria-describedby={disabled ? noteId : undefined}
         data-source={source}
         data-connecting={connecting ? "" : undefined}
-        disabled={disabled}
-        onClick={onHub ? onUseSimulator : onUseHub}
+        // aria-disabled, not disabled: it stays focusable so the note below can be reached
+        aria-disabled={disabled ? "true" : undefined}
+        onClick={disabled ? undefined : onHub ? onUseSimulator : onUseHub}
       >
         <svg viewBox="0 0 48 48" aria-hidden="true">
           {/* A Bluetooth rune: the robot is reached over the air. */}

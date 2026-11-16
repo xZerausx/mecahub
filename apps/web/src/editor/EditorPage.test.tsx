@@ -403,7 +403,7 @@ describe("EditorPage and the real hub", () => {
     (controller as { hubAvailable: boolean }).hubAvailable = false;
     mount(controller);
     const connect = button(en["editor.hub.connect"]);
-    expect(connect?.disabled).toBe(true);
+    expect(connect?.getAttribute("aria-disabled")).toBe("true");
     expect(host.querySelector(`#${connect?.getAttribute("aria-describedby")}`)?.textContent).toBe(
       en["editor.hub.unsupported"],
     );

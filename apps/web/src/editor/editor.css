@@ -272,7 +272,7 @@ body {
 .hub-button[data-source="hub"] {
   background: #7cc4ff;
 }
-.hub-button:disabled {
+.hub-button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.55;
 }

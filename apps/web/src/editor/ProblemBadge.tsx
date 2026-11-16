@@ -46,7 +46,7 @@ export function ProblemBadge({
           type="button"
           className="problem-badge"
           data-problem={problem}
-          aria-label={t("editor.problem.dismiss")}
+          aria-label={`${t(LABEL[problem])} ${t("editor.problem.dismiss")}`}
           onClick={onDismiss}
         >
           <svg viewBox="0 0 48 48" aria-hidden="true">
