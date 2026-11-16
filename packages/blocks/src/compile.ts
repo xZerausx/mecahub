@@ -24,6 +24,13 @@ const MAX_ERRORS = 100;
 /** Same budget as `validateProgram`: objects and arrays in the input, counted before walking it. */
 const MAX_NODES = 20_000;
 
+/**
+ * Longest literal time a time input accepts, in seconds (an hour). Beyond it a number is almost
+ * surely a typo, and a huge one would overflow the milliseconds. Negative times are not checked
+ * here: the IR validation reports them (`out-of-range`) on the statement.
+ */
+export const MAX_SECONDS = 3600;
+
 export type Context = {
   errors: CompileError[];
   /** Every error reported, also the ones past MAX_ERRORS: a node is built only when this did not move. */
@@ -224,7 +231,19 @@ export const compileInput = (
     return undefined;
   }
   const value = compileExpressionBlock(chosen, arg.check, ctx, depth + 1);
-  return value && arg.seconds ? secondsToMs(value) : value;
+  if (value && arg.seconds) {
+    if (value.type === "number" && (value.value as number) > MAX_SECONDS) {
+      fail(
+        ctx,
+        "bad-field",
+        `${arg.name}: ${String(value.value)} seconds is more than the ${MAX_SECONDS} allowed`,
+        ownerId,
+      );
+      return undefined;
+    }
+    return secondsToMs(value);
+  }
+  return value;
 };
 
 // ------------------------------------------------------------------------- program
@@ -346,6 +365,11 @@ export const compile = (state: unknown): CompileResult => {
   for (const raw of list) {
     const node = readBlock(raw);
     const spec = node && specFor(node.type);
+    if (node?.enabled && !spec && node.type.startsWith("mh_")) {
+      // Ours by prefix but unknown: a tampered or newer file, never silently dropped.
+      fail(ctx, "unknown-block", `unknown block type "${node.type}"`, node.id);
+      continue;
+    }
     if (!node || !spec || spec.shape !== "hat" || !node.enabled) continue; // floating or disabled
     const script = compileScript(node, spec, ctx);
     if (script) scripts.push(script);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileInput, createContext } from "./compile.js";
+import { MAX_SECONDS, compileInput, createContext } from "./compile.js";
 import { inputArgs, specFor, type InputArg } from "./spec.js";
 
 // Vectors are 'derivado del layout': Blockly's serialization format
@@ -180,6 +180,36 @@ describe("time inputs show seconds and compile to milliseconds", () => {
     expect(run(shadowIn(num(0.0004)), SECONDS).value).toEqual(n(0));
     expect(run(shadowIn(num(1.2345)), SECONDS).value).toEqual(n(1235));
     expect(run(shadowIn(num(0.001)), SECONDS).value).toEqual(n(1));
+  });
+
+  it("accepts up to MAX_SECONDS (3600) and rejects more with a bad-field on the owner block", () => {
+    expect(MAX_SECONDS).toBe(3600);
+    expect(run(shadowIn(num(3600)), SECONDS)).toEqual({ value: n(3_600_000), errors: [] });
+    for (const seconds of [3600.001, 3601, 1e21, 1e308, Number.MAX_VALUE]) {
+      const { value, errors } = run(shadowIn(num(seconds)), SECONDS);
+      expect(value, String(seconds)).toBeUndefined();
+      expect(errors, String(seconds)).toEqual([
+        expect.objectContaining({ code: "bad-field", blockId: "owner" }),
+      ]);
+      expect(errors[0]?.message).toMatch(/3600/);
+    }
+  });
+
+  it("rejects seconds that are not finite numbers (NaN, Infinity) as bad-field", () => {
+    for (const seconds of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const { value, errors } = run(shadowIn(num(seconds)), SECONDS);
+      expect(value).toBeUndefined();
+      expect(errors.map((e) => e.code)).toEqual(["bad-field"]);
+    }
+  });
+
+  it("leaves negative seconds to the IR validation (out-of-range on the statement)", () => {
+    expect(run(shadowIn(num(-1)), SECONDS).value).toEqual(n(-1000));
+  });
+
+  it("does not limit a time that is not a literal", () => {
+    const variable = block("mh_variable_get", { VAR: { id: "v1" } });
+    expect(run(blockIn(variable), SECONDS).errors).toEqual([]);
   });
 
   it("wraps any other expression in * 1000", () => {

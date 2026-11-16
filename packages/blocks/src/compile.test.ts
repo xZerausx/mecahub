@@ -370,6 +370,27 @@ describe("compile: scripts and statements", () => {
     expect(ok(result).scripts.map((s) => s.id)).toEqual(["a"]);
   });
 
+  it("a top-level mh_ block this package does not define is an unknown-block error", () => {
+    const result = compile(
+      state([hat(undefined, "mh_when_foo", "tampered"), hat(undefined, "mh_when_start", "ok")]),
+    );
+    expect(errorsOf(result)).toEqual([
+      expect.objectContaining({ code: "unknown-block", blockId: "tampered" }),
+    ]);
+  });
+
+  it("but a disabled unknown mh_ block, a floating mh_ statement and foreign blocks stay ignored", () => {
+    const result = compile(
+      state([
+        hat(undefined, "mh_when_start", "a"),
+        b("mh_when_foo", "off", { extra: { enabled: false } }),
+        led("floating"),
+        b("controls_if", "foreign"),
+      ]),
+    );
+    expect(ok(result).scripts.map((s) => s.id)).toEqual(["a"]);
+  });
+
   it("skips a disabled statement and keeps the blocks after it", () => {
     const body = chain(
       b("mh_set_led", "one", { fields: { COLOR: "red" } }),
