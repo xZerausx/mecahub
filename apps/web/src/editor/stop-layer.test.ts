@@ -54,4 +54,22 @@ describe("STOP layer", () => {
     expect(ours).toMatch(/\.level-button:focus-visible \+ \.level-tip/);
     expect(ours).toMatch(/\[data-tips-dismissed\][^{]*\.level-tip[^{]*\{[^}]*visibility:\s*hidden/);
   });
+
+  it("keeps the problem badge and the hub button below STOP and below Blockly's overlays", () => {
+    const stop = zIndexes(ours.match(/\.big-button\.stop\s*\{[^}]*\}/)?.[0] ?? "")[0] ?? 0;
+    const badge = ours.match(/\.problem-badge\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(badge).toMatch(/position:\s*absolute/);
+    const z = zIndexes(badge)[0] ?? 0;
+    expect(z).toBeGreaterThan(0);
+    expect(z).toBeLessThan(1000); // same ceiling as the level tooltips
+    expect(z).toBeLessThan(stop);
+    // nothing of the hub button or the badge may be an overlay of its own
+    for (const selector of [".hub-button", ".hub-note"]) {
+      const rule = ours.match(new RegExp(`\\${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
+      expect(
+        zIndexes(rule).every((value) => value < stop),
+        selector,
+      ).toBe(true);
+    }
+  });
 });
