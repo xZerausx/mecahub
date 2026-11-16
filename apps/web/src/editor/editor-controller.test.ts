@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { URGENT_DEADLINE_MS } from "@mecahub/transport";
 import {
   STOP_BUDGET_MS,
   createEditorController,
@@ -192,10 +193,29 @@ describe("a dropped link", () => {
   // Blockly re-injects on a level change) makes the transport declare the link dead. The next Run
   // must reconnect instead of failing with "not-connected" and showing nothing.
   it("is recovered: after a STOP that missed its deadline, Run connects again and runs", async () => {
-    const c = await make(200); // slow writes: a STOP write misses its 150 ms deadline
+    const c = await make(URGENT_DEADLINE_MS + 50); // slow writes: a STOP write misses its deadline
     c.stop(); // idle STOP, as on a level change
     await vi.advanceTimersByTimeAsync(1500);
     expect(c.getSnapshot().connection).toBe("idle"); // it noticed the link is gone
+    const result = c.run(forwardProgram());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await result).toBe("completed");
+  });
+});
+
+describe("a link that drops while connecting", () => {
+  it("does not end up marked connected: the next Run connects again", async () => {
+    vi.useFakeTimers();
+    let link: { dropLink(): void } | undefined;
+    const c = createEditorController({ simWriteLatencyMs: 30, onLink: (l) => (link = l) });
+    made.push(c);
+    const connecting = c.connect().catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(100); // mid-handshake
+    expect(c.getSnapshot().connection).toBe("connecting");
+    link?.dropLink();
+    await vi.advanceTimersByTimeAsync(1000);
+    await connecting;
+    expect(c.getSnapshot().connection).not.toBe("connected");
     const result = c.run(forwardProgram());
     await vi.advanceTimersByTimeAsync(10_000);
     expect(await result).toBe("completed");

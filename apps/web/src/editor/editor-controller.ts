@@ -77,6 +77,8 @@ export interface EditorControllerOptions {
   config?: SimHubConfig;
   /** Write latency of the simulated link (tests use it to exercise the STOP budget). */
   simWriteLatencyMs?: number;
+  /** Fault injection for tests: hands out a way to drop the simulated link. */
+  onLink?: (link: { dropLink(): void }) => void;
 }
 
 const LED_BY_ID: Readonly<Record<number, LedName>> = {
@@ -105,9 +107,12 @@ export function createEditorController(options: EditorControllerOptions = {}): E
       ? {}
       : { writeLatencyMs: options.simWriteLatencyMs }),
   });
+  options.onLink?.({ dropLink: () => transport.dropLink() });
   const moveHub = new MoveHub(transport);
   // Remember the latest STOP's writes: `stopSettled` hands them to whoever must not block them.
   const hubDevice = fromMoveHub(moveHub);
+  // Only the latest stopAll is tracked: the urgent writes of earlier STOPs are serialized FIFO by the
+  // write queue, ahead of the latest one's, so when it settles they all have.
   let lastStop: Promise<unknown> = Promise.resolve();
   const device: RuntimeDevice = {
     ...hubDevice,
@@ -156,15 +161,21 @@ export function createEditorController(options: EditorControllerOptions = {}): E
   ];
 
   let connecting: Promise<void> | undefined;
+  /** Bumped when the link drops: a connect attempt that started before it is stale. */
+  let linkEpoch = 0;
   const connect = (): Promise<void> => {
     connecting ??= (async () => {
+      const epoch = linkEpoch;
       publish({ connection: "connecting" });
       try {
         await moveHub.connect();
+        if (epoch !== linkEpoch) throw new Error("the link dropped while connecting");
         publish({ connection: "connected" });
       } catch (err) {
-        connecting = undefined;
-        publish({ connection: "failed" });
+        if (epoch === linkEpoch) {
+          connecting = undefined;
+          publish({ connection: "failed" });
+        } // else the drop handler already reset everything: do not overwrite it
         throw err;
       }
     })();
@@ -174,6 +185,7 @@ export function createEditorController(options: EditorControllerOptions = {}): E
   // The link can die under us (a STOP write that missed its deadline makes the transport drop it).
   // Forget the old connection so the next Run connects again instead of failing "not-connected".
   const offDisconnect = transport.onDisconnect(() => {
+    linkEpoch++;
     connecting = undefined;
     if (!disposed && snapshot.connection !== "idle") publish({ connection: "idle" });
   });
