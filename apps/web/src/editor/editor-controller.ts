@@ -141,6 +141,8 @@ interface Rig {
   connecting: Promise<void> | undefined;
   /** Set when we ask for the disconnect ourselves: it is not a dropped link. */
   closing: boolean;
+  /** Has this rig's hub ever been linked? A first connect that fails goes back to the simulator. */
+  everConnected: boolean;
   /** The latest STOP's writes (only the latest: earlier urgent writes are served FIFO before it). */
   lastStop: Promise<unknown>;
   readonly sim: { readonly hub: SimulatedHub; readonly transport: SimulatorTransport } | undefined;
@@ -191,7 +193,25 @@ export function createEditorController(options: EditorControllerOptions = {}): E
       transport = simTransport;
     } else {
       if (!createHubTransport) throw new TransportError("unsupported");
-      transport = createHubTransport();
+      const real = createHubTransport();
+      // A rig that was closed while its chooser was still open must not open a GATT link when the
+      // child picks the robot afterwards (nobody would own that link).
+      transport = {
+        get state() {
+          return real.state;
+        },
+        requestDevice: () => real.requestDevice(),
+        connect: () =>
+          rig.closing
+            ? Promise.reject(
+                new TransportError("cancelled", "the editor went back to the simulator"),
+              )
+            : real.connect(),
+        write: (bytes, writeOptions) => real.write(bytes, writeOptions),
+        onNotify: (listener) => real.onNotify(listener),
+        onDisconnect: (listener) => real.onDisconnect(listener),
+        disconnect: () => real.disconnect(),
+      };
     }
     const moveHub = new MoveHub(transport);
     const rig: Rig = {
@@ -204,6 +224,7 @@ export function createEditorController(options: EditorControllerOptions = {}): E
       epoch: 0,
       connecting: undefined,
       closing: false,
+      everConnected: false,
       lastStop: Promise.resolve(),
       sim,
     };
@@ -270,6 +291,16 @@ export function createEditorController(options: EditorControllerOptions = {}): E
       runtime.onError(({ statementId, error }) => {
         if (!live()) return;
         let kind = fromRunError(error);
+        // A hub that is not linked (the chooser is open, the connect failed) cannot take a STOP or a
+        // command: that is already explained by the connect problem, not a new one.
+        if (
+          rig.source === "hub" &&
+          rig.transport.state !== "connected" &&
+          snapshot.connection !== "dropped" &&
+          (kind === "stop-failed" || kind === "hub-error")
+        ) {
+          return;
+        }
         // With the link gone every write fails: the cause is the link, not the STOP or the command.
         if (snapshot.connection === "dropped" && (kind === "stop-failed" || kind === "hub-error")) {
           kind = "link-lost";
@@ -291,7 +322,7 @@ export function createEditorController(options: EditorControllerOptions = {}): E
         if (rig.source === "simulator") {
           if (snapshot.connection !== "idle") publish({ connection: "idle" });
         } else if (snapshot.connection === "connecting") {
-          publish({ connection: "failed", problem: "connect-failed" });
+          failConnect(rig, "connect-failed");
         } else if (snapshot.connection === "connected") {
           publish({
             connection: "dropped",
@@ -336,10 +367,15 @@ export function createEditorController(options: EditorControllerOptions = {}): E
         // MoveHub.connect opens the chooser only from an idle transport, and only the click that
         // called useHub gets here with one (connect() below refuses an idle hub transport).
         await rig.moveHub.connect();
-        if (!live()) throw new Error("the link dropped while connecting");
+        if (!live()) {
+          // Replaced meanwhile: whatever link this attempt opened has no owner.
+          void rig.transport.disconnect().catch(() => undefined);
+          throw new Error("the link dropped while connecting");
+        }
+        rig.everConnected = true;
         publish({
           connection: "connected",
-          problem: undefined,
+          ...(rig.source === "hub" ? { problem: undefined } : {}),
           ...(rig.source === "hub" ? { wheels: { a: "stopped", b: "stopped" } } : {}),
         });
       } catch (err) {
@@ -349,13 +385,27 @@ export function createEditorController(options: EditorControllerOptions = {}): E
             // The child dismissed the chooser: nothing happened. Back to the simulator, quietly.
             void toSimulator(rig);
           } else {
-            publish({ connection: "failed", problem: fromTransportError(err) });
+            failConnect(rig, fromTransportError(err));
           }
         } // else the drop handler (or the switch) already reset everything: do not overwrite it
         throw err;
       }
     })();
     return rig.connecting;
+  };
+
+  /**
+   * A connect failed. The very first one of a hub goes back to the simulator but keeps the badge, so
+   * "Connect the robot" works again at once; a hub that was linked before (a failed reconnect) stays
+   * on the hub: its device is known and Run retries without the chooser.
+   */
+  const failConnect = (rig: Rig, problem: ProblemKind | undefined): void => {
+    if (rig.source === "hub" && !rig.everConnected) {
+      toSimulator(rig);
+      publish({ problem });
+    } else {
+      publish({ connection: "failed", problem });
+    }
   };
 
   /** Replaces the current rig by a fresh simulator rig, connected. Sync: nothing to wait for. */

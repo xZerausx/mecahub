@@ -1,4 +1,9 @@
-import { TransportError, type BleDeviceInfo, type BleTransport } from "@mecahub/transport";
+import {
+  URGENT_DEADLINE_MS,
+  TransportError,
+  type BleDeviceInfo,
+  type BleTransport,
+} from "@mecahub/transport";
 import { FakeBluetooth } from "@mecahub/transport/testing";
 import { WebBleTransport } from "@mecahub/transport/web";
 import { SimulatedHub, SimulatorTransport, defaultMoveHubConfig } from "@mecahub/simulator";
@@ -64,6 +69,20 @@ class ChooserCountingTransport extends SimulatorTransport {
   }
 }
 
+function deferred(): { promise: Promise<void>; resolve(): void; reject(e: unknown): void } {
+  let resolve!: () => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<void>((res, rej) => ((resolve = res), (reject = rej)));
+  return { promise, resolve, reject };
+}
+/** The real Web Bluetooth adapter over a scripted navigator.bluetooth bridged to a simulated hub. */
+function chooserRig() {
+  const hub = new SimulatedHub(defaultMoveHubConfig());
+  const bluetooth = new FakeBluetooth();
+  bridgeFakeBluetooth(bluetooth, hub, { writeLatencyMs: 30 });
+  return { hub, bluetooth, transport: new WebBleTransport(bluetooth) };
+}
+
 const made: EditorController[] = [];
 const hubs: { hub: SimulatedHub; transport: ChooserCountingTransport }[] = [];
 const total = (pick: (t: ChooserCountingTransport) => number) =>
@@ -74,8 +93,11 @@ interface MakeOptions {
   chooserError?: unknown;
   createHubTransport?: () => BleTransport;
 }
+/** The error every NEW hub transport's chooser fails with (a test clears it to let a retry work). */
+const chooserErrorNow: { error: unknown } = { error: undefined };
 function make(options: MakeOptions = {}) {
   vi.useFakeTimers();
+  chooserErrorNow.error = options.chooserError;
   const createHubTransport =
     options.createHubTransport ??
     (() => {
@@ -83,7 +105,7 @@ function make(options: MakeOptions = {}) {
       const transport = new ChooserCountingTransport(hub, {
         writeLatencyMs: options.latency ?? 30,
       });
-      transport.chooserError = options.chooserError;
+      transport.chooserError = chooserErrorNow.error;
       hubs.push({ hub, transport });
       return transport;
     });
@@ -159,31 +181,69 @@ describe("useHub", () => {
   it.each([
     ["gatt", new TransportError("gatt")],
     ["no-device", new TransportError("no-device")],
-  ])("a %s failure shows connect-failed on the hub source", async (_name, error) => {
-    const c = make({ chooserError: error });
-    await ready(c);
-    await c.useHub();
-    await settle(300);
-    expect(c.getSnapshot()).toMatchObject({
-      source: "hub",
-      connection: "failed",
-      problem: "connect-failed",
-    });
-  });
+    ["a SecurityError-like failure", new Error("denied")],
+  ])(
+    "%s at the chooser falls back to the simulator and keeps the connect-failed badge",
+    async (_name, error) => {
+      const c = make({ chooserError: error });
+      await ready(c);
+      await c.useHub();
+      await settle(1000);
+      expect(c.getSnapshot()).toMatchObject({
+        source: "simulator",
+        connection: "connected",
+        problem: "connect-failed",
+      });
+      // pressing "Connect the robot" again just works: the chooser opens a second time
+      chooserErrorNow.error = undefined;
+      const again = c.useHub();
+      expect(total((t) => t.chooserCalls)).toBe(2);
+      await settle(1500);
+      await again;
+      expect(c.getSnapshot()).toMatchObject({ source: "hub", connection: "connected" });
+    },
+  );
 
-  it("a GATT failure after the chooser is connect-failed, and Run retries WITHOUT the chooser", async () => {
+  it("a GATT failure after the chooser also falls back, badge kept; the retry reopens the chooser", async () => {
     const c = make();
     await ready(c);
     const first = c.useHub();
     hubs[0]?.transport.failNextConnect();
     await settle(1500);
     await first;
-    expect(c.getSnapshot()).toMatchObject({ connection: "failed", problem: "connect-failed" });
+    expect(c.getSnapshot()).toMatchObject({
+      source: "simulator",
+      connection: "connected",
+      problem: "connect-failed",
+    });
+    const again = c.useHub();
+    expect(total((t) => t.chooserCalls)).toBe(2);
+    await settle(1500);
+    await again;
+    expect(c.getSnapshot()).toMatchObject({
+      source: "hub",
+      connection: "connected",
+      problem: undefined,
+    });
+  });
+
+  it("a failed RECONNECT after a drop stays on the hub (the device is known): Run retries without the chooser", async () => {
+    const c = make();
+    await connectHub(c);
+    hubs[0]?.transport.dropLink();
+    hubs[0]?.transport.failNextConnect();
+    const failed = c.run(forwardProgram());
+    await settle(3000);
+    expect(await failed).toBe("error");
+    expect(c.getSnapshot()).toMatchObject({
+      source: "hub",
+      connection: "failed",
+      problem: "connect-failed",
+    });
     const result = c.run(forwardProgram());
     await settle(10_000);
     expect(await result).toBe("completed");
     expect(total((t) => t.chooserCalls)).toBe(1);
-    expect(c.getSnapshot()).toMatchObject({ connection: "connected", problem: undefined });
   });
 
   it("the Bluetooth button in any hub state goes back to the simulator", async () => {
@@ -218,17 +278,6 @@ describe("connect() (the mount effect) never opens the chooser", () => {
     await ready(c);
     expect(total((t) => t.chooserCalls)).toBe(0);
     expect(c.getSnapshot().connection).toBe("connected");
-  });
-
-  it("from a hub transport that is idle it fails connect-failed instead of asking", async () => {
-    const c = make({ chooserError: new TransportError("no-device") });
-    await ready(c);
-    await c.useHub();
-    await settle(300);
-    expect(total((t) => t.chooserCalls)).toBe(1);
-    await expect(c.connect()).rejects.toBeDefined();
-    expect(total((t) => t.chooserCalls)).toBe(1);
-    expect(c.getSnapshot()).toMatchObject({ connection: "failed", problem: "connect-failed" });
   });
 
   it("from a dropped hub it reconnects without the chooser", async () => {
@@ -364,6 +413,44 @@ describe("problems", () => {
     expect(c.getSnapshot().problem).toBeUndefined();
   });
 
+  it("STOP while the chooser is open (connecting) is still attempted but shows no stop-failed", async () => {
+    const rig = chooserRig();
+    const c = make({ createHubTransport: () => rig.transport });
+    await ready(c);
+    rig.bluetooth.requestGate = deferred();
+    void c.useHub();
+    expect(c.getSnapshot().connection).toBe("connecting");
+    const before = c.getSnapshot().problem;
+    expect(() => c.stop()).not.toThrow();
+    await settle(1000);
+    await c.stopSettled();
+    expect(c.getSnapshot().problem).toBe(before);
+    expect(c.getSnapshot().problem).toBeUndefined();
+  });
+
+  it("STOP on a hub that is not connected (failed reconnect) shows no stop-failed", async () => {
+    const c = make();
+    await connectHub(c);
+    hubs[0]?.transport.dropLink();
+    hubs[0]?.transport.failNextConnect();
+    const failed = c.run(forwardProgram());
+    await settle(3000);
+    await failed;
+    expect(c.getSnapshot()).toMatchObject({ connection: "failed", problem: "connect-failed" });
+    c.stop();
+    await settle(1000);
+    expect(c.getSnapshot().problem).toBe("connect-failed");
+  });
+
+  it("STOP failing on a LIVE link still shows stop-failed", async () => {
+    const c = make();
+    await connectHub(c);
+    hubs[0]?.transport.failNextWrite();
+    c.stop();
+    await settle(2000);
+    expect(c.getSnapshot().problem).toBe("stop-failed");
+  });
+
   it("dismissProblem clears the problem", async () => {
     const c = make();
     await connectHub(c);
@@ -401,6 +488,29 @@ describe("the preview mirrors the commanded wheels on the hub rig", () => {
     await result;
     expect(c.getSnapshot().led).toBe("red");
   });
+});
+
+describe("a chooser left open while going back to the simulator", () => {
+  it("leaves no GATT connection behind when the child picks the robot afterwards", async () => {
+    const rig = chooserRig();
+    const c = make({ createHubTransport: () => rig.transport });
+    await ready(c);
+    rig.bluetooth.requestGate = deferred();
+    void c.useHub();
+    expect(rig.bluetooth.requests).toHaveLength(1);
+    const back = c.useSimulator();
+    await settle(1500);
+    await back;
+    expect(c.getSnapshot()).toMatchObject({ source: "simulator", connection: "connected" });
+    rig.bluetooth.requestGate.resolve(); // the child finally picks the robot
+    await settle(3000);
+    expect(rig.bluetooth.device.gatt?.connectCalls).toBe(0);
+    expect(rig.bluetooth.device.gatt?.connected).toBe(false);
+    expect(c.getSnapshot()).toMatchObject({ source: "simulator", connection: "connected" });
+    expect(c.getSnapshot().problem).toBeUndefined();
+  });
+  // TODO(hw): what Chrome does on a second requestDevice while the first chooser is still open
+  // (rapid hub -> simulator -> hub): unverified, see docs/hardware-checklist.md.
 });
 
 describe("STOP on the hub rig (mandatory: < 200 ms, always)", () => {
