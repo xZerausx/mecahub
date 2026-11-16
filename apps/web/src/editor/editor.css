@@ -113,10 +113,34 @@
   pointer-events: none;
   transition: opacity 120ms ease;
 }
-.level-button:hover + .level-tip,
+/* Hover only where a pointer can really hover: on touch a tap leaves :hover stuck, and the tip would
+   sit over the workspace with no way to close it. The tip is hoverable (WCAG 1.4.13): it is a child
+   of .level-item, and a bridge over the gap keeps the hover while the pointer travels to it. */
+.level-tip::before {
+  content: "";
+  position: absolute;
+  top: -15px;
+  left: 0;
+  right: 0;
+  height: 15px;
+}
 .level-button:focus-visible + .level-tip {
   visibility: visible;
   opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .level-item:hover .level-tip {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+/* Esc dismisses (WCAG 1.4.13); it comes last so it wins at equal or lower specificity. */
+.level-toggle[data-tips-dismissed] .level-item .level-tip {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 .level-button {
   width: 60px;

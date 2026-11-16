@@ -39,9 +39,17 @@ describe("STOP layer", () => {
     const z = zIndexes(tip)[0] ?? 0;
     expect(z).toBeGreaterThan(0);
     expect(z).toBeLessThan(stop);
-    expect(ours).toMatch(/\.level-button:hover\s*\+\s*\.level-tip/);
     expect(ours).toMatch(/\.level-button:focus-visible\s*\+\s*\.level-tip/);
     // overflow: hidden on the toggle would clip the tooltip
     expect(ours.match(/\.level-toggle\s*\{[^}]*\}/)?.[0] ?? "").not.toMatch(/overflow:\s*hidden/);
+  });
+
+  it("tooltips: hover only where hover exists, hoverable, and dismissable", () => {
+    // hover rules live inside @media (hover: hover): touch devices have a sticky :hover
+    const outside = ours.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@media \(hover: hover\)\s*\{(?:[^{}]*\{[^}]*\})*\s*\}/g, "");
+    expect(outside).not.toMatch(/:hover[^{]*\.level-tip/);
+    expect(ours).toMatch(/@media \(hover: hover\)[\s\S]*\.level-item:hover \.level-tip/);
+    expect(ours).toMatch(/\.level-button:focus-visible \+ \.level-tip/);
+    expect(ours).toMatch(/\[data-tips-dismissed\][^{]*\.level-tip[^{]*\{[^}]*visibility:\s*hidden/);
   });
 });

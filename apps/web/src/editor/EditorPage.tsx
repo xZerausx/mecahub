@@ -24,6 +24,9 @@ export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
   const tipBase = useId();
+  // Esc hides a visible level tooltip (WCAG 1.4.13) until the pointer enters or the focus moves.
+  const [tipsDismissed, setTipsDismissed] = useState(false);
+  const toggle = useRef<HTMLDivElement>(null);
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -48,7 +51,8 @@ export function EditorPage({ controller, locale, t }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        controller.stop(); // a pure STOP: it never changes the level or anything else
+        controller.stop(); // first, always: a pure STOP that never changes the level or anything else
+        setTipsDismissed(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -86,7 +90,19 @@ export function EditorPage({ controller, locale, t }: Props) {
             <path d="M17 5H31L43 17V31L31 43H17L5 31V17Z" />
           </svg>
         </button>
-        <div className="level-toggle" role="group" aria-label={t("editor.levelLabel")}>
+        <div
+          ref={toggle}
+          className="level-toggle"
+          role="group"
+          aria-label={t("editor.levelLabel")}
+          data-tips-dismissed={tipsDismissed ? "" : undefined}
+          onPointerEnter={() => setTipsDismissed(false)}
+          onPointerLeave={() => {
+            if (!toggle.current?.contains(document.activeElement)) setTipsDismissed(false);
+          }}
+          onFocus={() => setTipsDismissed(false)}
+          onBlur={() => setTipsDismissed(false)}
+        >
           {LEVELS.map((value) => (
             <span key={value} className="level-item">
               <button

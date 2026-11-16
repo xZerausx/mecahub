@@ -291,6 +291,33 @@ describe("EditorPage", () => {
       }
     });
 
+    describe("Escape dismisses a visible tooltip (WCAG 1.4.13) without touching STOP", () => {
+      const toggle = () => host.querySelector<HTMLElement>(".level-toggle");
+
+      it("hides the tips until the pointer enters again, and STOP still runs first", () => {
+        const controller = fakeController();
+        mount(controller);
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+        act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+        expect(controller.stop).toHaveBeenCalledTimes(1);
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true);
+        act(() => void toggle()?.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+      });
+
+      it("stays dismissed while the focus is on a level button, until it moves away", () => {
+        mount(fakeController());
+        const b = button(en["editor.level.advanced"]);
+        act(() => b?.focus());
+        act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true);
+        act(() => void toggle()?.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true); // focus is still there
+        act(() => b?.blur());
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+      });
+    });
+
     it("the two tooltips have different ids", () => {
       mount(fakeController());
       const ids = ["icons", "advanced"].map((v) =>
