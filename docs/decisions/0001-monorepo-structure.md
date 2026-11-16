@@ -16,6 +16,7 @@ Package boundaries:
 - `transport`: `BleTransport` interface plus implementations (web, mock). The only place that touches Bluetooth APIs.
 - `hub`: hub state and commands on top of lwp3 + transport. Node-only.
 - `runtime`: executes programs. Node-only.
+- `ir`: the program IR (schema, types, validation), shared by `blocks` and `runtime`; see [0003](0003-program-ir.md).
 - `blocks`: Blockly blocks and compilation to IR.
 - `simulator`: fake hub for tests and development without hardware.
 - `apps/web`: React UI. `apps/mobile`: Capacitor shell (phase 4).

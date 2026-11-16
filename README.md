@@ -95,6 +95,7 @@ packages/
   lwp3/         LEGO Wireless Protocol 3.0 message encoding/decoding
   hub/          Hub and device abstractions
   transport/    BLE transport interface and implementations
+  ir/           Program IR (JSON Schema, types, validation)
   runtime/      Program execution engine
   blocks/       Block definitions (Blockly)
   simulator/    Virtual hub for development and tests
