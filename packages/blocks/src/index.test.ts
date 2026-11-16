@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { PACKAGE_NAME } from "./index.js";
+import * as blocks from "./index.js";
 
 describe("@mecahub/blocks", () => {
   it("exports its package name", () => {
-    expect(PACKAGE_NAME).toBe("@mecahub/blocks");
+    expect(blocks.PACKAGE_NAME).toBe("@mecahub/blocks");
+  });
+
+  it("exports the compiler", () => {
+    expect(blocks.compile).toBeTypeOf("function");
+    expect(blocks.compile({})).toEqual({
+      ok: true,
+      program: { irVersion: 1, variables: [], scripts: [] },
+    });
   });
 });
