@@ -84,6 +84,14 @@ Assumptions (`supuesto`, all `TODO(hw)`):
 - Sounds go to an injected `SoundSink` and are not awaited; the default plays nothing.
 - A program that completes on its own ends with a STOP, like any other run: a finished program never leaves a motor running (decided 2026-11-15, safety for young users). `onFinished` fires after that STOP is handed to the device, so a run started from it is ordered after the STOP; a late `stop-failed` from the finished run may still reach `onError` while the next run is active.
 
+## Advanced blocks (`@mecahub/blocks`)
+
+The Advanced level edits the IR through Blockly blocks (`compile` / `decompile`, see `packages/blocks/README.md`). One decision touches the IR's units: **Advanced blocks show time in seconds, the IR keeps milliseconds** (a child understands "wait 0.5 seconds"; the runtime and the schema stay in ms).
+
+- Compile: a literal (block or shadow) becomes `Math.round(seconds * 1000)`; any other expression becomes `arithmetic * 1000`.
+- Decompile: a ms literal shows as `ms / 1000`; `x * 1000` (literal 1000 on the right, non-literal `x`) is unwrapped to `x`; any other ms expression is wrapped in `/ 1000`. That last shape round-trips to `(x / 1000) * 1000`, which means the same thing.
+- Block variables have no initial value, so they compile with `initial: 0`.
+
 ## Consequences
 
 - Validation uses Ajv 8, which compiles the schema to code with `new Function`. A future Content-Security-Policy without `unsafe-eval` would need a precompiled (Ajv standalone) validator generated at build time. The schema and the `validateProgram` contract do not change.
