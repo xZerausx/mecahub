@@ -14,10 +14,12 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "dev": "pnpm --filter @mecahub/web dev",
     "sim": "pnpm --filter @mecahub/web dev --open /dev/simulator.html",
-    "lab": "pnpm --filter @mecahub/web dev --open /dev/lab.html"
+    "lab": "pnpm --filter @mecahub/web dev --open /dev/lab.html",
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
     "@types/node": "^26.6.6",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",

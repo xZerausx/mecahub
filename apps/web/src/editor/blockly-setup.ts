@@ -59,6 +59,9 @@ export function workspaceOptions(level: Level, locale: Locale): Blockly.BlocklyO
     theme: mecahubTheme(),
     renderer: icons ? "zelos" : "geras",
     toolbox: toolbox(MESSAGES[locale], level),
+    // Blockly's sprites and cursors default to https://static.blockly.com: serve our own copy
+    // (public/blockly-media, copied from the blockly package; no audio) so nothing leaves the app.
+    media: `${import.meta.env.BASE_URL}blockly-media/`,
     // No sound files: the app makes no network requests and ships no audio.
     sounds: false,
     trashcan: true,

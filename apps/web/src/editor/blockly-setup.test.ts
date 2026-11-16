@@ -59,6 +59,10 @@ describe("workspaceOptions", () => {
     expect(options.sounds).toBe(false);
   });
 
+  it("serves Blockly's images and cursors from the app itself, never from blockly.com", () => {
+    expect(workspaceOptions("icons", "en").media).toBe(`${import.meta.env.BASE_URL}blockly-media/`);
+  });
+
   it("never reaches for the network: no media path to a remote host", () => {
     for (const level of ["icons", "advanced"] as const) {
       expect(JSON.stringify(workspaceOptions(level, "en"))).not.toMatch(/https?:/);

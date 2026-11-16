@@ -6,3 +6,5 @@ coverage/
 .env.*
 .DS_Store
 .atl/
+test-results/
+playwright-report/

@@ -16,7 +16,7 @@ interface Props {
   level: Level;
   locale: Locale;
   apiRef: RefObject<WorkspaceApi | null>;
-  /** The state a fresh workspace starts with (only used before anything was saved). */
+  /** The state a fresh workspace starts with (only used before anything was saved). Keep it stable. */
   initialState: () => Record<string, unknown>;
   highlightedBlockId: string | undefined;
   errorBlockIds: readonly string[];
@@ -34,15 +34,13 @@ export function BlocklyWorkspace(props: Props) {
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null);
   /** The program between two injections. */
   const saved = useRef<Record<string, unknown> | null>(null);
-  const initial = useRef(initialState);
-  initial.current = initialState;
 
   useEffect(() => {
     const host = container.current;
     if (!host) return;
     const ws = Blockly.inject(host, workspaceOptions(level, locale));
     workspace.current = ws;
-    Blockly.serialization.workspaces.load(saved.current ?? initial.current(), ws);
+    Blockly.serialization.workspaces.load(saved.current ?? initialState(), ws);
     apiRef.current = { save: () => Blockly.serialization.workspaces.save(ws) };
     const resize = () => Blockly.svgResize(ws);
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(resize);
@@ -54,7 +52,7 @@ export function BlocklyWorkspace(props: Props) {
       workspace.current = null;
       ws.dispose();
     };
-  }, [level, locale, apiRef]);
+  }, [level, locale, apiRef, initialState]);
 
   const { highlightedBlockId, errorBlockIds } = props;
   useEffect(() => {
