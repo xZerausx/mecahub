@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import en from "../../../content/i18n/en.json";
 import es from "../../../content/i18n/es.json";
 import { BLOCK_STYLES, HAT_STYLE, blockDefinitions, messageKeys } from "./definitions.js";
+import { iconSrc } from "./icons.js";
 import { BLOCK_SPECS, fieldArgs, inputArgs } from "./spec.js";
+
+const catalog = en as Record<string, string>;
+const ADVANCED = BLOCK_SPECS.filter((b) => b.level === "advanced");
+const ICON_ROWS = BLOCK_SPECS.filter((b) => b.level === "icons");
 
 const catalogs = { en, es } as Record<string, Record<string, string>>;
 const nonStatementArgs = (type: string) => {
@@ -30,7 +35,7 @@ describe.each(Object.keys(catalogs))("block messages (%s)", (locale) => {
   });
 
   it("uses exactly the tokens %1..%n in each message, n = number of arguments", () => {
-    for (const row of BLOCK_SPECS) {
+    for (const row of ADVANCED) {
       const message = messages[`blocks.${row.type}.message`] as string;
       expect(tokens(message), row.type).toEqual(expectedTokens(nonStatementArgs(row.type).length));
       for (const input of inputArgs(row).filter((i) => i.kind === "statements")) {
@@ -44,13 +49,30 @@ describe.each(Object.keys(catalogs))("block messages (%s)", (locale) => {
     const defs = blockDefinitions(messages);
     expect(defs.map((d) => d.type)).toEqual(BLOCK_SPECS.map((b) => b.type));
     for (const def of defs) {
-      expect(def.message0, def.type).toBe(messages[`blocks.${def.type}.message`]);
+      if (!def.type.startsWith("mh_icon_")) {
+        expect(def.message0, def.type).toBe(messages[`blocks.${def.type}.message`]);
+      }
       expect(def.tooltip, def.type).toBe(messages[`blocks.${def.type}.tooltip`]);
+    }
+  });
+
+  it("gives icon blocks alt text and option alt text, and no message", () => {
+    for (const row of ICON_ROWS) {
+      expect(messages[`blocks.${row.type}.message`], row.type).toBeUndefined();
+      expect(messages[`blocks.${row.type}.alt`], row.type).toBeTypeOf("string");
     }
   });
 });
 
 describe("wording for kids", () => {
+  it("counts turns in steps, like the other movement blocks (not in 'giros')", () => {
+    for (const type of ["mh_icon_turn_left", "mh_icon_turn_right"]) {
+      expect(en[`blocks.${type}.tooltip` as keyof typeof en], type).toMatch(/turn steps/);
+      expect(es[`blocks.${type}.tooltip` as keyof typeof es], type).toMatch(/pasos de giro/);
+      expect(es[`blocks.${type}.tooltip` as keyof typeof es], type).not.toMatch(/giros/);
+    }
+  });
+
   it("avoids programmer jargon and regional words in every block text", () => {
     for (const [locale, catalog] of Object.entries(catalogs)) {
       for (const [key, text] of Object.entries(catalog)) {
@@ -69,6 +91,7 @@ describe("time is shown in seconds", () => {
     expect(timed.map((b) => b.type).sort()).toEqual(
       ["mh_drive_for_time", "mh_motor_run_for_time", "mh_wait"].sort(),
     );
+    expect(ICON_ROWS.some((b) => inputArgs(b).length > 0)).toBe(false);
     for (const row of timed) {
       expect(en[`blocks.${row.type}.message` as keyof typeof en], row.type).toMatch(/second/i);
       expect(es[`blocks.${row.type}.message` as keyof typeof es], row.type).toMatch(/segundo/i);
@@ -101,7 +124,7 @@ describe("blockDefinitions", () => {
     const hats = Object.values(defs).filter(
       (d) => d.nextStatement === null && !("previousStatement" in d),
     );
-    expect(hats).toHaveLength(5);
+    expect(hats).toHaveLength(6); // five Advanced hats and the Icons "when start" flag
     for (const hat of hats) {
       expect(hat.style, hat.type).toBe(HAT_STYLE);
       expect(hat).not.toHaveProperty("colour"); // Blockly rejects a style together with a colour
@@ -168,6 +191,79 @@ describe("blockDefinitions", () => {
     const rest: Record<string, string> = { ...en };
     delete rest["blocks.mh_wait.message"];
     expect(() => blockDefinitions(rest)).toThrow(/blocks\.mh_wait\.message/);
+  });
+
+  describe("icons level", () => {
+    const iconDefs = ICON_ROWS.map((r) => def(r.type));
+
+    it("contains no literal text: message0 is only tokens and every option is an image", () => {
+      for (const d of iconDefs) {
+        expect(d.message0 ?? "", d.type).toMatch(/^%\d+( %\d+)*$/);
+        expect(d).not.toHaveProperty("message1");
+        for (const arg of d.args0 ?? []) {
+          expect(["field_image", "field_number", "field_dropdown"], d.type).toContain(arg.type);
+          if (arg.type === "field_dropdown") {
+            for (const [label] of arg.options) {
+              expect(typeof label, `${d.type} option`).toBe("object");
+            }
+          }
+        }
+        expect((d.message0 ?? "").match(/%\d+/g), d.type).toHaveLength(d.args0?.length ?? 0);
+      }
+    });
+
+    it("shows the block icon as a field_image with a data URI and alt text from the catalog", () => {
+      const forward = def("mh_icon_forward").args0?.[0];
+      expect(forward).toEqual({
+        type: "field_image",
+        name: "ICON",
+        src: iconSrc("forward"),
+        width: 40,
+        height: 40,
+        alt: catalog["blocks.mh_icon_forward.alt"],
+      });
+    });
+
+    it("emits image dropdown options with the swatch, alt text and IR value", () => {
+      const dropdown = def("mh_icon_led").args0?.find((a) => a.type === "field_dropdown");
+      expect(dropdown).toMatchObject({ name: "COLOR" });
+      const options = dropdown && "options" in dropdown ? dropdown.options : [];
+      expect(options.map(([, v]) => v)).toEqual([
+        "green",
+        "red",
+        "blue",
+        "yellow",
+        "white",
+        "black",
+      ]);
+      expect(options[1]).toEqual([
+        {
+          src: iconSrc("swatch_red"),
+          width: 32,
+          height: 32,
+          alt: catalog["blocks.mh_icon_led.option.red"],
+        },
+        "red",
+      ]);
+    });
+
+    it("bounds the steps field to integers 1..9", () => {
+      expect(def("mh_icon_turn_left").args0?.[1]).toEqual({
+        type: "field_number",
+        name: "STEPS",
+        value: 1,
+        min: 1,
+        max: 9,
+        precision: 1,
+      });
+      expect(def("mh_icon_wait").args0?.[1]).toMatchObject({ name: "SECONDS", min: 1, max: 9 });
+    });
+
+    it("draws the flag as a hat and the stop as a terminal", () => {
+      expect(def("mh_icon_when_start")).toMatchObject({ style: HAT_STYLE, nextStatement: null });
+      expect(def("mh_icon_stop")).toMatchObject({ previousStatement: null });
+      expect(def("mh_icon_stop")).not.toHaveProperty("nextStatement");
+    });
   });
 
   it("never collides option values inside one block", () => {

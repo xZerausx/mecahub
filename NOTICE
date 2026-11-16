@@ -2,3 +2,8 @@ mecahub
 Copyright 2026 The mecahub contributors
 
 LEGO and BOOST are trademarks of the LEGO Group, which does not sponsor, authorize or endorse this project.
+
+This product includes media files (images and cursors) from Blockly 13.4.0,
+Copyright 2011 Google LLC, licensed under the Apache License 2.0 (Apache-2.0).
+Source: https://github.com/google/blockly
+They are redistributed unchanged in apps/web/public/blockly-media/.

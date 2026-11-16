@@ -16,13 +16,17 @@ import {
   TRIGGER_FIELDS,
 } from "@mecahub/ir";
 import { describe, expect, it } from "vitest";
-import { BLOCK_SPECS, type Arg, type BlockSpec } from "./spec.js";
+import { ICON_NAMES, ICONS } from "./icons.js";
+import { BLOCK_SPECS, ICON_DRIVE, ICON_TURN_DEGREES, type Arg, type BlockSpec } from "./spec.js";
+
+const ADVANCED = BLOCK_SPECS.filter((b) => b.level === "advanced");
+const ICON_ROWS = BLOCK_SPECS.filter((b) => b.level === "icons");
 
 const rows = (group: BlockSpec["ir"]["group"], kind: string): BlockSpec[] =>
-  BLOCK_SPECS.filter((b) => b.ir.group === group && b.ir.kind === kind);
+  ADVANCED.filter((b) => b.ir.group === group && b.ir.kind === kind);
 
 const argFor = (row: BlockSpec, key: string): Arg | undefined =>
-  row.args.find((a) => a.key === key);
+  row.args.find((a) => "key" in a && a.key === key);
 
 /** The slot kind an IR field of each `kind` (types.ts `Kind<V>`) must map to. */
 const ENUM_VALUES: Record<string, readonly string[]> = {
@@ -84,12 +88,18 @@ const expectCovers = (
     expectSlot(argFor(row, key), slot.kind, `${row.type}.${key}`);
   }
   for (const arg of row.args) {
+    if (arg.slot === "icon") continue;
     expect(keys, `${row.type} has an argument for an unknown IR key ${arg.key}`).toContain(arg.key);
   }
   for (const key of fixed) expect(keys, `${row.type} fixes unknown ${key}`).toContain(key);
 };
 
 describe("block spec", () => {
+  it("tags every row with a level, and the existing catalogue is the advanced one", () => {
+    for (const row of BLOCK_SPECS) expect(["icons", "advanced"], row.type).toContain(row.level);
+    expect(BLOCK_SPECS.filter((b) => b.level === "advanced").length).toBeGreaterThanOrEqual(40);
+  });
+
   it("has unique mh_ block types without forbidden words and unique argument names", () => {
     const types = BLOCK_SPECS.map((b) => b.type);
     expect(new Set(types).size).toBe(types.length);
@@ -111,12 +121,18 @@ describe("block spec", () => {
       "check",
       "seconds",
       "initial",
+      "icon",
+      "icons",
+      "min",
+      "max",
+      "unit",
     ]);
     for (const row of BLOCK_SPECS) {
       expect(Object.keys(row).sort(), row.type).toEqual([
         "args",
         "category",
         "ir",
+        "level",
         "shape",
         "type",
       ]);
@@ -149,7 +165,7 @@ describe("block spec", () => {
       expect(found[0]?.shape).toBe("hat");
       expectCovers(found[0] as BlockSpec, TRIGGER_FIELDS[kind as keyof typeof TRIGGER_FIELDS]);
     }
-    expect(BLOCK_SPECS.filter((b) => b.shape === "hat")).toHaveLength(
+    expect(ADVANCED.filter((b) => b.shape === "hat")).toHaveLength(
       Object.keys(TRIGGER_FIELDS).length,
     );
   });
@@ -202,9 +218,106 @@ describe("block spec", () => {
 
   it("matches the shape with the connections: hats and expressions never take a previous block", () => {
     expect(
-      BLOCK_SPECS.filter((b) => b.shape === "terminal")
+      ADVANCED.filter((b) => b.shape === "terminal")
         .map((b) => b.type)
         .sort(),
     ).toEqual(["mh_stop_all", "mh_stop_script"]);
+  });
+
+  describe("icons level", () => {
+    it("has the eight icon blocks, prefixed mh_icon_", () => {
+      expect(ICON_ROWS.map((b) => b.type)).toEqual([
+        "mh_icon_when_start",
+        "mh_icon_forward",
+        "mh_icon_backward",
+        "mh_icon_turn_left",
+        "mh_icon_turn_right",
+        "mh_icon_led",
+        "mh_icon_wait",
+        "mh_icon_stop",
+      ]);
+      for (const row of BLOCK_SPECS) {
+        expect(row.type.startsWith("mh_icon_"), row.type).toBe(row.level === "icons");
+      }
+    });
+
+    it("compiles every icon block to an existing IR node, setting every required key", () => {
+      for (const row of ICON_ROWS) {
+        const table: Record<string, unknown> | undefined =
+          row.ir.group === "trigger"
+            ? (TRIGGER_FIELDS as Record<string, Record<string, unknown>>)[row.ir.kind]
+            : (STATEMENT_FIELDS as Record<string, Record<string, unknown>>)[row.ir.kind];
+        expect(table, `${row.type}: unknown IR ${row.ir.group} ${row.ir.kind}`).toBeDefined();
+        const required = Object.keys(table ?? {}).filter((k) => k !== "id");
+        const provided = [
+          ...Object.keys(row.ir.fixed ?? {}),
+          ...row.args.flatMap((a) => (a.slot === "icon" ? [] : [a.key])),
+        ];
+        expect(provided.sort(), row.type).toEqual(required.sort());
+      }
+    });
+
+    it("uses only integer steps 1..9 for movement and waiting", () => {
+      const counted = ICON_ROWS.filter((r) => r.args.some((a) => a.kind === "count"));
+      expect(counted.map((r) => r.type)).toEqual([
+        "mh_icon_forward",
+        "mh_icon_backward",
+        "mh_icon_turn_left",
+        "mh_icon_turn_right",
+        "mh_icon_wait",
+      ]);
+      for (const row of counted) {
+        const arg = row.args.find((a) => a.kind === "count");
+        expect(arg).toMatchObject({ initial: 1, min: 1, max: 9 });
+      }
+    });
+
+    it("takes its drive and turn amounts from named constants (supuesto, TODO(hw))", () => {
+      const fixed = (type: string) => BLOCK_SPECS.find((b) => b.type === type)?.ir.fixed;
+      const n = (value: number) => ({ type: "number", value });
+      expect(fixed("mh_icon_forward")).toEqual({ speedA: n(ICON_DRIVE), speedB: n(ICON_DRIVE) });
+      expect(fixed("mh_icon_backward")).toEqual({ speedA: n(-ICON_DRIVE), speedB: n(-ICON_DRIVE) });
+      expect(fixed("mh_icon_turn_left")).toEqual({ speedA: n(-ICON_DRIVE), speedB: n(ICON_DRIVE) });
+      expect(fixed("mh_icon_turn_right")).toEqual({
+        speedA: n(ICON_DRIVE),
+        speedB: n(-ICON_DRIVE),
+      });
+      const unit = (type: string) =>
+        BLOCK_SPECS.find((b) => b.type === type)?.args.find((a) => a.kind === "count");
+      expect(unit("mh_icon_forward")).toMatchObject({ unit: 360 });
+      expect(unit("mh_icon_turn_left")).toMatchObject({ unit: ICON_TURN_DEGREES });
+      expect(unit("mh_icon_wait")).toMatchObject({ unit: 1000 });
+    });
+
+    it("has no sound block and one hat and one terminal", () => {
+      expect(ICON_ROWS.some((r) => r.ir.kind === "playSound")).toBe(false);
+      expect(ICON_ROWS.filter((r) => r.shape === "hat")).toHaveLength(1);
+      expect(ICON_ROWS.filter((r) => r.shape === "terminal")).toHaveLength(1);
+    });
+
+    it("offers the six LED colours as swatches", () => {
+      const led = BLOCK_SPECS.find((b) => b.type === "mh_icon_led");
+      const color = led?.args.find((a) => a.kind === "enum");
+      expect(color && "values" in color && [...color.values].sort()).toEqual(
+        ["black", "blue", "green", "red", "white", "yellow"].sort(),
+      );
+    });
+
+    it("uses every icon, and every icon it names exists", () => {
+      const used = new Set<string>();
+      for (const row of ICON_ROWS) {
+        for (const arg of row.args) {
+          if (arg.slot === "icon") used.add(arg.icon);
+          if (arg.kind === "enum" && arg.icons)
+            for (const name of Object.values(arg.icons)) used.add(name);
+        }
+        const enumArg = row.args.find((a) => a.kind === "enum");
+        if (enumArg?.kind === "enum" && enumArg.icons) {
+          expect(Object.keys(enumArg.icons).sort(), row.type).toEqual([...enumArg.values].sort());
+        }
+      }
+      expect([...used].sort()).toEqual([...ICON_NAMES].sort());
+      for (const name of used) expect(ICONS, name).toHaveProperty(name);
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { validateProgram } from "@mecahub/ir";
 import { describe, expect, it } from "vitest";
 import { compile } from "./compile.js";
-import { BLOCK_SPECS } from "./spec.js";
+import { BLOCK_SPECS, ICON_DRIVE, ICON_TURN_DEGREES } from "./spec.js";
 
 // Vectors are 'derivado del layout': the JSON of Blockly.serialization.workspaces.save, written by
 // hand from its documented shape and the block table in spec.ts; the IR side follows ir/types.ts.
@@ -305,7 +305,117 @@ const ROWS: Row[] = [
     type: "not",
     operand: { type: "boolean", value: true },
   }),
+
+  // icons level: the same IR as the Advanced blocks. Fixed speeds are supuesto, TODO(hw).
+  triggerRow("mh_icon_when_start", b("mh_icon_when_start", "h"), { type: "start" }),
+  statementRow("mh_icon_forward", b("mh_icon_forward", "s", { fields: { STEPS: 2 } }), {
+    type: "driveForDegrees",
+    speedA: n(ICON_DRIVE),
+    speedB: n(ICON_DRIVE),
+    degrees: n(720),
+  }),
+  statementRow("mh_icon_backward", b("mh_icon_backward", "s", { fields: { STEPS: 1 } }), {
+    type: "driveForDegrees",
+    speedA: n(-ICON_DRIVE),
+    speedB: n(-ICON_DRIVE),
+    degrees: n(360),
+  }),
+  statementRow("mh_icon_turn_left", b("mh_icon_turn_left", "s", { fields: { STEPS: 3 } }), {
+    type: "driveForDegrees",
+    speedA: n(-ICON_DRIVE),
+    speedB: n(ICON_DRIVE),
+    degrees: n(3 * ICON_TURN_DEGREES),
+  }),
+  statementRow("mh_icon_turn_right", b("mh_icon_turn_right", "s", { fields: { STEPS: 1 } }), {
+    type: "driveForDegrees",
+    speedA: n(ICON_DRIVE),
+    speedB: n(-ICON_DRIVE),
+    degrees: n(ICON_TURN_DEGREES),
+  }),
+  statementRow("mh_icon_led", b("mh_icon_led", "s", { fields: { COLOR: "green" } }), {
+    type: "setLed",
+    color: "green",
+  }),
+  statementRow("mh_icon_wait", b("mh_icon_wait", "s", { fields: { SECONDS: 2 } }), {
+    type: "wait",
+    ms: n(2000),
+  }),
+  statementRow("mh_icon_stop", b("mh_icon_stop", "s"), { type: "stopAll" }),
 ];
+
+describe("compile: icon blocks", () => {
+  const compileSteps = (type: string, fields: Raw) =>
+    compile(state([hat(b(type, "s", { fields }))]));
+
+  it.each(["mh_icon_forward", "mh_icon_backward", "mh_icon_turn_left", "mh_icon_turn_right"])(
+    "%s accepts 1 and 9 steps and rejects anything else as bad-field",
+    (type) => {
+      expect(compileSteps(type, { STEPS: 1 }).ok).toBe(true);
+      expect(compileSteps(type, { STEPS: 9 }).ok).toBe(true);
+      for (const bad of [0, 10, 1.5, -1, "2", null, Number.NaN, undefined]) {
+        const errors = errorsOf(compileSteps(type, { STEPS: bad }));
+        expect(errors, String(bad)).toHaveLength(1);
+        expect(errors[0], String(bad)).toMatchObject({ code: "bad-field", blockId: "s" });
+      }
+    },
+  );
+
+  it("mh_icon_wait takes whole seconds 1..9 only", () => {
+    expect(compileSteps("mh_icon_wait", { SECONDS: 9 }).ok).toBe(true);
+    for (const bad of [0, 10, 0.5, "1"]) {
+      expect(errorsOf(compileSteps("mh_icon_wait", { SECONDS: bad }))[0]).toMatchObject({
+        code: "bad-field",
+      });
+    }
+  });
+
+  it("rejects an LED colour that is not one of the swatches", () => {
+    const errors = errorsOf(compileSteps("mh_icon_led", { COLOR: "pink" }));
+    expect(errors[0]).toMatchObject({ code: "bad-field", blockId: "s" });
+  });
+
+  it("does not let two blocks share the fixed IR literals (each compile copies them)", () => {
+    const stack = chain(
+      b("mh_icon_forward", "a", { fields: { STEPS: 1 } }),
+      b("mh_icon_forward", "c", { fields: { STEPS: 1 } }),
+    );
+    const out = ok(compile(state([hat(stack)])));
+    const [first, second] = out.scripts[0]?.body ?? [];
+    expect((first as { speedA: unknown }).speedA).not.toBe((second as { speedA: unknown }).speedA);
+  });
+
+  it("compiles an icon program and the same Advanced program to the same IR", () => {
+    const icons = ok(
+      compile(
+        state([
+          b("mh_icon_when_start", "h", {
+            next: chain(
+              b("mh_icon_forward", "a", { fields: { STEPS: 2 } }),
+              b("mh_icon_led", "c", { fields: { COLOR: "red" } }),
+              b("mh_icon_stop", "d"),
+            ) as Raw,
+          }),
+        ]),
+      ),
+    );
+    const advanced = ok(
+      compile(
+        state([
+          hat(
+            chain(
+              b("mh_drive_for_degrees", "a", {
+                inputs: { SPEED_A: sh(50), SPEED_B: sh(50), DEGREES: sh(720) },
+              }),
+              b("mh_set_led", "c", { fields: { COLOR: "red" } }),
+              b("mh_stop_all", "d"),
+            ),
+          ),
+        ]),
+      ),
+    );
+    expect(icons).toEqual(advanced);
+  });
+});
 
 describe("compile: one block at a time", () => {
   it("has a row for every block of the spec", () => {

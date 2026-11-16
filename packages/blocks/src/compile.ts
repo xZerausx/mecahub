@@ -79,6 +79,11 @@ const readField = (
       return typeof raw === "number" && Number.isFinite(raw)
         ? { value: raw }
         : bad("expected a finite number");
+    case "count":
+      // Whole steps within the block's range, scaled to the IR literal: 2 steps of 360 = 720.
+      return typeof raw === "number" && Number.isInteger(raw) && raw >= arg.min && raw <= arg.max
+        ? { value: { type: "number", value: raw * arg.unit } }
+        : bad(`expected a whole number from ${arg.min} to ${arg.max}`);
     case "variable": {
       const id = own(raw, "id");
       if (typeof id !== "string") return bad("expected a variable reference");
@@ -105,8 +110,9 @@ const buildNode = (
   depth: number,
 ): IrNode | undefined => {
   const before = ctx.failures;
-  const out: IrNode = { type: spec.ir.kind, ...spec.ir.fixed };
+  const out: IrNode = { type: spec.ir.kind, ...structuredClone(spec.ir.fixed) };
   for (const arg of spec.args) {
+    if (arg.slot === "icon") continue;
     if (arg.slot === "field") {
       const read = readField(arg, node, ctx);
       if (read) out[arg.key] = read.value;
