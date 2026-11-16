@@ -293,16 +293,20 @@ export function createEditorController(options: EditorControllerOptions = {}): E
         let kind = fromRunError(error);
         // A hub that is not linked (the chooser is open, the connect failed) cannot take a STOP or a
         // command: that is already explained by the connect problem, not a new one.
+        const writeFailed = kind === "stop-failed" || kind === "hub-error";
+        // A hub that was linked before and is being reconnected may still be moving: say so.
+        const relinking = rig.everConnected && snapshot.connection === "connecting";
         if (
+          writeFailed &&
           rig.source === "hub" &&
           rig.transport.state !== "connected" &&
           snapshot.connection !== "dropped" &&
-          (kind === "stop-failed" || kind === "hub-error")
+          !relinking
         ) {
-          return;
+          return; // a FIRST connect: already explained by the connect problem
         }
         // With the link gone every write fails: the cause is the link, not the STOP or the command.
-        if (snapshot.connection === "dropped" && (kind === "stop-failed" || kind === "hub-error")) {
+        if ((snapshot.connection === "dropped" || relinking) && writeFailed) {
           kind = "link-lost";
         }
         publish({
@@ -383,7 +387,7 @@ export function createEditorController(options: EditorControllerOptions = {}): E
           rig.connecting = undefined;
           if (rig.source === "hub" && err instanceof TransportError && err.code === "cancelled") {
             // The child dismissed the chooser: nothing happened. Back to the simulator, quietly.
-            void toSimulator(rig);
+            toSimulator(rig);
           } else {
             failConnect(rig, fromTransportError(err));
           }
@@ -401,18 +405,17 @@ export function createEditorController(options: EditorControllerOptions = {}): E
    */
   const failConnect = (rig: Rig, problem: ProblemKind | undefined): void => {
     if (rig.source === "hub" && !rig.everConnected) {
-      toSimulator(rig);
-      publish({ problem });
+      toSimulator(rig, problem);
     } else {
       publish({ connection: "failed", problem });
     }
   };
 
   /** Replaces the current rig by a fresh simulator rig, connected. Sync: nothing to wait for. */
-  const toSimulator = (old: Rig): void => {
+  const toSimulator = (old: Rig, problem?: ProblemKind): void => {
     if (disposed) return;
     disposeRig(old);
-    enter(buildRig("simulator"));
+    enter(buildRig("simulator"), problem === undefined ? {} : { problem });
     void connectRig(current).catch(() => undefined);
   };
 
@@ -426,10 +429,10 @@ export function createEditorController(options: EditorControllerOptions = {}): E
     errorBlockIds: [],
   });
 
-  const enter = (rig: Rig): void => {
+  const enter = (rig: Rig, extra: Partial<EditorSnapshot> = {}): void => {
     current = rig;
     wire(rig);
-    publish(resetPicture(rig.source));
+    publish({ ...resetPicture(rig.source), ...extra });
   };
 
   enter(buildRig("simulator"));

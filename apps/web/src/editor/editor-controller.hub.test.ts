@@ -437,6 +437,48 @@ describe("problems", () => {
     expect(c.getSnapshot().problem).toBe("connect-failed");
   });
 
+  it("STOP while RECONNECTING after a drop shows link-lost, not nothing", async () => {
+    const c = make();
+    await connectHub(c);
+    hubs[0]?.transport.dropLink();
+    hubs[0]?.transport.holdNextConnect();
+    void c.run(forwardProgram()); // clears the badge, the reconnect hangs
+    await settle(100);
+    expect(c.getSnapshot()).toMatchObject({ connection: "connecting", problem: undefined });
+    c.stop();
+    await settle(1000);
+    expect(c.getSnapshot().problem).toBe("link-lost");
+  });
+
+  it("a link that drops DURING the first connect falls back to the simulator with the badge", async () => {
+    const c = make();
+    await ready(c);
+    hubs.length = 0;
+    void c.useHub();
+    hubs[0]?.transport.holdNextConnect();
+    await settle(100);
+    expect(c.getSnapshot()).toMatchObject({ source: "hub", connection: "connecting" });
+    hubs[0]?.transport.dropLink();
+    await settle(1000);
+    expect(c.getSnapshot()).toMatchObject({
+      source: "simulator",
+      connection: "connected",
+      problem: "connect-failed",
+    });
+  });
+
+  it("the fallback publishes the badge in the same frame (no flicker)", async () => {
+    const c = make({ chooserError: new TransportError("gatt") });
+    await ready(c);
+    const seen: EditorSnapshot[] = [];
+    c.subscribe(() => seen.push(c.getSnapshot()));
+    await c.useHub();
+    await settle(1000);
+    const back = seen.findIndex((s) => s.source === "simulator");
+    expect(seen[back]?.problem).toBe("connect-failed");
+    expect(seen.slice(back).every((s) => s.problem === "connect-failed")).toBe(true);
+  });
+
   it("STOP failing on a LIVE link still shows stop-failed", async () => {
     const c = make();
     await connectHub(c);
