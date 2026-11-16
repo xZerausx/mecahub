@@ -7,6 +7,8 @@
   "editor.level.advanced": "Advanced level",
   "editor.workspace": "Program area",
   "editor.preview": "Robot preview",
+  "editor.source.simulator": "Simulator",
+  "editor.source.hub": "Hub",
   "editor.previewLed": "Hub light",
   "editor.wheelA": "Left wheel",
   "editor.wheelB": "Right wheel",

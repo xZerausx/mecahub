@@ -7,6 +7,7 @@ import en from "../../../../content/i18n/en.json";
 import es from "../../../../content/i18n/es.json";
 import { createTranslator } from "../i18n.js";
 import { EditorPage } from "./EditorPage.js";
+import { SimPreview } from "./SimPreview.js";
 import type { EditorController, EditorSnapshot } from "./editor-controller.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -78,10 +79,11 @@ describe("EditorPage", () => {
     }
   });
 
-  it("shows no visible text outside the Blockly area", () => {
+  it("shows no visible text outside the Blockly area except the simulator label and tooltips", () => {
     mount(fakeController());
-    const chrome = host.querySelector(".editor-bar");
-    expect(chrome?.textContent?.trim()).toBe("");
+    const chrome = host.querySelector(".editor-bar")?.cloneNode(true) as HTMLElement;
+    for (const el of chrome.querySelectorAll(".sim-source, [role=tooltip]")) el.remove();
+    expect(chrome.textContent?.trim()).toBe("");
   });
 
   it("STOP is always enabled, even with nothing running, and calls controller.stop()", () => {
@@ -238,5 +240,37 @@ describe("EditorPage", () => {
     expect(preview?.getAttribute("data-led")).toBe("red");
     expect(preview?.getAttribute("data-wheel-a")).toBe("forward");
     expect(preview?.getAttribute("data-wheel-b")).toBe("backward");
+  });
+
+  describe("simulator label", () => {
+    it("shows which robot the preview is: the simulator for now", () => {
+      mount(fakeController());
+      const label = host.querySelector(".sim-source");
+      expect(label).not.toBeNull();
+      expect(label?.textContent).toBe(en["editor.source.simulator"]);
+    });
+
+    it("renders the hub label for source=hub, in both languages", () => {
+      for (const [locale, catalog] of [
+        ["en", en],
+        ["es", es],
+      ] as const) {
+        act(() =>
+          root.render(<SimPreview source="hub" snapshot={idle} t={createTranslator(locale)} />),
+        );
+        expect(host.querySelector(".sim-source"), locale).not.toBeNull();
+        expect(host.querySelector(".sim-source")?.textContent, locale).toBe(
+          catalog["editor.source.hub"],
+        );
+        act(() =>
+          root.render(
+            <SimPreview source="simulator" snapshot={idle} t={createTranslator(locale)} />,
+          ),
+        );
+        expect(host.querySelector(".sim-source")?.textContent, locale).toBe(
+          catalog["editor.source.simulator"],
+        );
+      }
+    });
   });
 });

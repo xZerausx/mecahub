@@ -7,6 +7,8 @@
   "editor.level.advanced": "Nivel avanzado",
   "editor.workspace": "Zona del programa",
   "editor.preview": "Vista previa del robot",
+  "editor.source.simulator": "Simulador",
+  "editor.source.hub": "Hub",
   "editor.previewLed": "Luz del hub",
   "editor.wheelA": "Rueda izquierda",
   "editor.wheelB": "Rueda derecha",

@@ -117,7 +117,8 @@ export function EditorPage({ controller, locale, t }: Props) {
             </button>
           ))}
         </div>
-        <SimPreview snapshot={snapshot} t={t} />
+        {/* The controller only drives the simulator today; "hub" arrives with the real-hub connection. */}
+        <SimPreview source="simulator" snapshot={snapshot} t={t} />
       </header>
       <BlocklyWorkspace
         level={level}
