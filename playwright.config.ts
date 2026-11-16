@@ -32,6 +32,9 @@ export default defineConfig({
     // A stale server on the port would be reused silently (this is how a run can hang or test old
     // code): fail fast instead, in CI and locally.
     reuseExistingServer: false,
+    // Browser tests of the real-hub flow need a hub; the dev server (never the production build)
+    // can ship a simulator-backed one, see apps/web/src/editor/e2e-fake-hub.ts.
+    env: PROD ? {} : { VITE_E2E_FAKE_HUB: "1" },
     timeout: PROD ? 180_000 : 60_000,
     stdout: "ignore",
     stderr: "pipe",
