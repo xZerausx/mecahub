@@ -55,6 +55,16 @@ describe("toolbox", () => {
     expect(wait?.inputs?.TIME).toEqual({ shadow: { type: "mh_number", fields: { NUM: 1 } } });
   });
 
+  it("takes a level: advanced is the default and icons is a flat flyout with no categories", () => {
+    expect(toolbox(en, "advanced")).toEqual(toolbox(en));
+    const flyout = toolbox(en, "icons");
+    expect(flyout.kind).toBe("flyoutToolbox");
+    for (const entry of (flyout.contents ?? []) as unknown as Entry[]) {
+      expect(entry.kind).toBe("block");
+      expect(specFor(entry.type ?? "")?.level).toBe("icons");
+    }
+  });
+
   it("names every category from the catalog, in both languages", () => {
     for (const messages of [en, es] as Record<string, string>[]) {
       for (const id of CATEGORY_ORDER) {

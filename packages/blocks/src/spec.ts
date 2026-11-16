@@ -54,9 +54,13 @@ export type InputArg =
 
 export type Arg = FieldArg | InputArg;
 
+/** Which editor level offers the block. Every level's blocks are always registered with Blockly. */
+export type Level = "icons" | "advanced";
+
 export type BlockSpec = {
   /** Blockly block type, always `mh_*`. */
   type: string;
+  level: Level;
   category: CategoryId;
   shape: Shape;
   /** The IR node it maps to; `fixed` are IR properties the block always sets (a sensor kind). */
@@ -130,6 +134,7 @@ const body = (name: string, key: string): InputArg => ({
 
 const hat = (type: string, kind: string, args: Arg[] = []): BlockSpec => ({
   type,
+  level: "advanced",
   category: "events",
   shape: "hat",
   ir: { group: "trigger", kind },
@@ -141,7 +146,14 @@ const stmt = (
   kind: string,
   args: Arg[] = [],
   shape: "statement" | "terminal" = "statement",
-): BlockSpec => ({ type, category, shape, ir: { group: "statement", kind }, args });
+): BlockSpec => ({
+  type,
+  level: "advanced",
+  category,
+  shape,
+  ir: { group: "statement", kind },
+  args,
+});
 const expr = (
   type: string,
   category: CategoryId,
@@ -151,6 +163,7 @@ const expr = (
   fixed?: Record<string, string>,
 ): BlockSpec => ({
   type,
+  level: "advanced",
   category,
   shape,
   ir: { group: "expression", kind, ...(fixed ? { fixed } : {}) },

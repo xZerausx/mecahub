@@ -90,6 +90,11 @@ const expectCovers = (
 };
 
 describe("block spec", () => {
+  it("tags every row with a level, and the existing catalogue is the advanced one", () => {
+    for (const row of BLOCK_SPECS) expect(["icons", "advanced"], row.type).toContain(row.level);
+    expect(BLOCK_SPECS.filter((b) => b.level === "advanced").length).toBeGreaterThanOrEqual(40);
+  });
+
   it("has unique mh_ block types without forbidden words and unique argument names", () => {
     const types = BLOCK_SPECS.map((b) => b.type);
     expect(new Set(types).size).toBe(types.length);
@@ -117,6 +122,7 @@ describe("block spec", () => {
         "args",
         "category",
         "ir",
+        "level",
         "shape",
         "type",
       ]);
