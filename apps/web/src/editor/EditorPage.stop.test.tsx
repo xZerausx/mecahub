@@ -64,3 +64,45 @@ describe("switching level while a program runs", () => {
     host.remove();
   });
 });
+
+describe("switching level while idle", () => {
+  // Blockly re-injects in the same click: a long task. If a STOP write was still in flight it would
+  // miss its 150 ms deadline and the transport would declare the link dead. So the STOP frames must
+  // be out before the level (and so the re-inject) changes, and the link must survive.
+  it(
+    "sends the STOP frames before the level changes, and keeps the link",
+    { timeout: 30_000 },
+    async () => {
+      const controller = createEditorController({ simWriteLatencyMs: 30 });
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const root = createRoot(host);
+      act(() =>
+        root.render(<EditorPage controller={controller} locale="en" t={createTranslator("en")} />),
+      );
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(500); // the page connected the simulator
+      expect(controller.getSnapshot().connection).toBe("connected");
+      const framesBefore = controller.sentFrames();
+      const editor = host.querySelector<HTMLElement>(".editor");
+      act(() =>
+        host
+          .querySelector<HTMLButtonElement>(`button[aria-label="${en["editor.level.advanced"]}"]`)
+          ?.click(),
+      );
+      let framesWhenLevelChanged: number | undefined;
+      for (let ms = 0; ms < 1000 && framesWhenLevelChanged === undefined; ms += 5) {
+        await vi.advanceTimersByTimeAsync(5);
+        if (editor?.getAttribute("data-level") === "advanced") {
+          framesWhenLevelChanged = controller.sentFrames();
+        }
+      }
+      expect(framesWhenLevelChanged).toBeDefined();
+      expect(framesWhenLevelChanged).toBeGreaterThan(framesBefore); // STOP went out first
+      expect(controller.getSnapshot().connection).toBe("connected"); // no link drop
+      act(() => root.unmount());
+      controller.dispose();
+      host.remove();
+    },
+  );
+});

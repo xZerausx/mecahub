@@ -1,7 +1,7 @@
 import { compile } from "@mecahub/blocks";
 import { MoveHub } from "@mecahub/hub";
 import { ColorId } from "@mecahub/lwp3";
-import { createRuntime, fromMoveHub, type Runtime } from "@mecahub/runtime";
+import { createRuntime, fromMoveHub, type Runtime, type RuntimeDevice } from "@mecahub/runtime";
 import {
   SimulatedHub,
   SimulatorTransport,
@@ -61,6 +61,12 @@ export interface EditorController {
   run(workspaceState: unknown): Promise<RunOutcome>;
   /** STOP. Synchronous and always safe: while idle, while connecting, repeated. */
   stop(): void;
+  /**
+   * Resolves once the writes of the latest STOP settled (immediately if there is none). Never
+   * rejects. A caller about to do heavy main-thread work (re-injecting Blockly) waits for it, so
+   * that work cannot delay a STOP write past its deadline and get the link declared dead.
+   */
+  stopSettled(): Promise<void>;
   /** Number of frames written to the simulated hub so far (tests). */
   sentFrames(): number;
   dispose(): void;
@@ -100,7 +106,20 @@ export function createEditorController(options: EditorControllerOptions = {}): E
       : { writeLatencyMs: options.simWriteLatencyMs }),
   });
   const moveHub = new MoveHub(transport);
-  const runtime: Runtime = createRuntime({ device: fromMoveHub(moveHub), clock });
+  // Remember the latest STOP's writes: `stopSettled` hands them to whoever must not block them.
+  const hubDevice = fromMoveHub(moveHub);
+  let lastStop: Promise<unknown> = Promise.resolve();
+  const device: RuntimeDevice = {
+    ...hubDevice,
+    has: (resource) => hubDevice.has(resource),
+    motor: (port) => hubDevice.motor(port),
+    onColorAndDistance: (port, listener) => hubDevice.onColorAndDistance(port, listener),
+    onTilt: (listener) => hubDevice.onTilt(listener),
+    onButton: (listener) => hubDevice.onButton(listener),
+    led: (color) => hubDevice.led(color),
+    stopAll: () => (lastStop = hubDevice.stopAll()) as ReturnType<RuntimeDevice["stopAll"]>,
+  };
+  const runtime: Runtime = createRuntime({ device, clock });
 
   const listeners = new Set<() => void>();
   let snapshot: EditorSnapshot = {
@@ -199,16 +218,20 @@ export function createEditorController(options: EditorControllerOptions = {}): E
     stop() {
       generation++;
       try {
+        // Always hands STOP to the device, running or not (the child's STOP never depends on
+        // knowing whether a program is "really" running): `runtime.stop()` either ends the run
+        // with a STOP or, when idle, sends one itself. A second STOP here would only double the
+        // urgent writes that must all meet their deadline.
         runtime.stop();
-        // Nothing running: still tell a connected hub to halt (safe, and the child's STOP never
-        // depends on knowing whether a program is "really" running).
-        if (!runtime.running && snapshot.connection === "connected") {
-          moveHub.stopAll().catch(() => undefined);
-        }
       } catch {
         // STOP must never throw into the click handler.
       }
     },
+    stopSettled: () =>
+      lastStop.then(
+        () => undefined,
+        () => undefined,
+      ),
     dispose() {
       disposed = true;
       for (const off of offs) off();

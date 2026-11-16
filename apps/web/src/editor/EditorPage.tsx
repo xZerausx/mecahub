@@ -2,7 +2,7 @@ import type { Level } from "@mecahub/blocks";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
-import type { EditorController } from "./editor-controller.js";
+import { STOP_BUDGET_MS, type EditorController } from "./editor-controller.js";
 import { SimPreview } from "./SimPreview.js";
 import "./editor.css";
 
@@ -117,7 +117,16 @@ export function EditorPage({ controller, locale, t }: Props) {
                   // Blockly dropdown; the program carries over.
                   controller.stop();
                   api.current?.hideChaff();
-                  setLevel(value);
+                  // Re-injecting Blockly is a long task on this thread. A STOP write still in flight
+                  // would miss its deadline and the transport would drop the link, so the level
+                  // changes only once the STOP writes settled (capped: a stuck link never freezes it).
+                  let timer: ReturnType<typeof setTimeout> | undefined;
+                  const capped = new Promise<void>((resolve) => {
+                    timer = setTimeout(resolve, STOP_BUDGET_MS);
+                  });
+                  void Promise.race([controller.stopSettled(), capped])
+                    .finally(() => clearTimeout(timer))
+                    .then(() => setLevel(value));
                 }}
               >
                 <svg viewBox="0 0 48 48" aria-hidden="true">

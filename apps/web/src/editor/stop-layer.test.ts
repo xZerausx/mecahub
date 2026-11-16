@@ -46,7 +46,9 @@ describe("STOP layer", () => {
 
   it("tooltips: hover only where hover exists, hoverable, and dismissable", () => {
     // hover rules live inside @media (hover: hover): touch devices have a sticky :hover
-    const outside = ours.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@media \(hover: hover\)\s*\{(?:[^{}]*\{[^}]*\})*\s*\}/g, "");
+    const outside = ours
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/@media \(hover: hover\)\s*\{(?:[^{}]*\{[^}]*\})*\s*\}/g, "");
     expect(outside).not.toMatch(/:hover[^{]*\.level-tip/);
     expect(ours).toMatch(/@media \(hover: hover\)[\s\S]*\.level-item:hover \.level-tip/);
     expect(ours).toMatch(/\.level-button:focus-visible \+ \.level-tip/);

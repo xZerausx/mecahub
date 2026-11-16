@@ -12,6 +12,14 @@ import type { EditorController, EditorSnapshot } from "./editor-controller.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** A level change waits for the STOP writes to settle, then re-injects: let that happen. */
+const clickLevel = (label: string): Promise<void> =>
+  act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find((b) => b.getAttribute("aria-label") === label)
+      ?.click();
+  });
+
 const idle: EditorSnapshot = {
   running: false,
   connection: "connected",
@@ -37,6 +45,7 @@ function fakeController(initial: EditorSnapshot = idle) {
     connect: vi.fn(() => Promise.resolve()),
     run: vi.fn(() => Promise.resolve("completed" as const)),
     stop: vi.fn(),
+    stopSettled: vi.fn(() => Promise.resolve()),
     sentFrames: () => 0,
     dispose: vi.fn(),
   };
@@ -132,10 +141,10 @@ describe("EditorPage", () => {
     expect(host.querySelector(".blocklySvg")).not.toBeNull();
   });
 
-  it("switches level, keeping the program and re-injecting Blockly", () => {
+  it("switches level, keeping the program and re-injecting Blockly", async () => {
     const controller = fakeController();
     mount(controller);
-    act(() => button(en["editor.level.advanced"])?.click());
+    await clickLevel(en["editor.level.advanced"]);
     expect(button(en["editor.level.advanced"])?.getAttribute("aria-pressed")).toBe("true");
     expect(host.querySelectorAll(".blocklySvg")).toHaveLength(1);
     act(() => button(en["editor.run"])?.click());
@@ -164,10 +173,10 @@ describe("EditorPage", () => {
     expect(document.activeElement).toBe(level);
   });
 
-  it("changing the level halts a running program first and STOP still works", () => {
+  it("changing the level halts a running program first and STOP still works", async () => {
     const controller = fakeController({ ...idle, running: true });
     mount(controller);
-    act(() => button(en["editor.level.advanced"])?.click());
+    await clickLevel(en["editor.level.advanced"]);
     expect(controller.run).not.toHaveBeenCalled();
     expect(controller.dispose).not.toHaveBeenCalled();
     expect(controller.stop).toHaveBeenCalledTimes(1); // the level request itself
@@ -180,43 +189,43 @@ describe("EditorPage", () => {
   describe("switching level", () => {
     const pressed = (label: string) => button(label)?.getAttribute("aria-pressed");
 
-    it("has no confirmation dialog: Advanced switches at once", () => {
+    it("has no confirmation dialog: Advanced switches at once", async () => {
       mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
+      await clickLevel(en["editor.level.advanced"]);
       expect(host.querySelector('[role="dialog"]')).toBeNull();
       expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(false);
       expect(pressed(en["editor.level.advanced"])).toBe("true");
       expect(pressed(en["editor.level.icons"])).toBe("false");
     });
 
-    it("stops the controller and closes Blockly widgets on every change, both directions", () => {
+    it("stops the controller and closes Blockly widgets on every change, both directions", async () => {
       const spy = vi.spyOn(Blockly.WorkspaceSvg.prototype, "hideChaff");
       const controller = fakeController();
       mount(controller);
       spy.mockClear(); // Blockly itself calls hideChaff while injecting
-      act(() => button(en["editor.level.advanced"])?.click());
+      await clickLevel(en["editor.level.advanced"]);
       expect(controller.stop).toHaveBeenCalledTimes(1);
       expect(spy).toHaveBeenCalled();
       spy.mockClear();
-      act(() => button(en["editor.level.icons"])?.click());
+      await clickLevel(en["editor.level.icons"]);
       expect(controller.stop).toHaveBeenCalledTimes(2);
       expect(spy).toHaveBeenCalled();
       expect(pressed(en["editor.level.icons"])).toBe("true");
       spy.mockRestore();
     });
 
-    it("clicking the level already active does nothing", () => {
+    it("clicking the level already active does nothing", async () => {
       const controller = fakeController();
       mount(controller);
-      act(() => button(en["editor.level.icons"])?.click());
+      await clickLevel(en["editor.level.icons"]);
       expect(controller.stop).not.toHaveBeenCalled();
     });
 
-    it("keeps the program across both directions", () => {
+    it("keeps the program across both directions", async () => {
       const controller = fakeController();
       mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => button(en["editor.level.icons"])?.click());
+      await clickLevel(en["editor.level.advanced"]);
+      await clickLevel(en["editor.level.icons"]);
       act(() => button(en["editor.run"])?.click());
       const state = (controller.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
         blocks: { blocks: { type: string }[] };
@@ -224,10 +233,10 @@ describe("EditorPage", () => {
       expect(state.blocks.blocks.map((b) => b.type)).toEqual(["mh_icon_when_start"]);
     });
 
-    it("Escape is a pure STOP: it does not change the level", () => {
+    it("Escape is a pure STOP: it does not change the level", async () => {
       const controller = fakeController();
       mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
+      await clickLevel(en["editor.level.advanced"]);
       act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
       expect(controller.stop).toHaveBeenCalledTimes(2); // the level change, then Esc
       expect(pressed(en["editor.level.advanced"])).toBe("true");
@@ -311,7 +320,12 @@ describe("EditorPage", () => {
         act(() => b?.focus());
         act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
         expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true);
-        act(() => void toggle()?.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+        act(
+          () =>
+            void toggle()?.dispatchEvent(
+              new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }),
+            ),
+        );
         expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true); // focus is still there
         act(() => b?.blur());
         expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
