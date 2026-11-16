@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import en from "../../../content/i18n/en.json";
 import es from "../../../content/i18n/es.json";
-import { blockDefinitions, messageKeys } from "./definitions.js";
+import { BLOCK_STYLES, HAT_STYLE, blockDefinitions, messageKeys } from "./definitions.js";
 import { BLOCK_SPECS, fieldArgs, inputArgs } from "./spec.js";
 
 const catalogs = { en, es } as Record<string, Record<string, string>>;
@@ -74,13 +74,31 @@ describe("blockDefinitions", () => {
   };
 
   it("follows the spec shape for connections", () => {
-    expect(def("mh_when_start")).toMatchObject({ nextStatement: null, hat: "cap" });
+    expect(def("mh_when_start")).toMatchObject({ nextStatement: null });
+    expect(def("mh_when_start")).not.toHaveProperty("hat");
     expect(def("mh_when_start")).not.toHaveProperty("previousStatement");
     expect(def("mh_wait")).toMatchObject({ previousStatement: null, nextStatement: null });
     expect(def("mh_stop_all")).toMatchObject({ previousStatement: null });
     expect(def("mh_stop_all")).not.toHaveProperty("nextStatement");
     expect(def("mh_number")).toMatchObject({ output: "Number" });
     expect(def("mh_compare")).toMatchObject({ output: "Boolean" });
+  });
+
+  it("draws hats with a cap through a named block style, the only way Blockly 13.4.0 reads it", () => {
+    // jsonInit ignores a top-level `hat`; an inline `style` object is consumed (set to null) by the
+    // first instance of a shared definition. A named style defined in the theme has neither problem.
+    const hats = Object.values(defs).filter(
+      (d) => d.nextStatement === null && !("previousStatement" in d),
+    );
+    expect(hats).toHaveLength(5);
+    for (const hat of hats) {
+      expect(hat.style, hat.type).toBe(HAT_STYLE);
+      expect(hat).not.toHaveProperty("colour"); // Blockly rejects a style together with a colour
+      expect(hat).not.toHaveProperty("hat");
+    }
+    expect(BLOCK_STYLES[HAT_STYLE]).toEqual({ colourPrimary: "45", hat: "cap" });
+    expect(def("mh_wait")).not.toHaveProperty("style");
+    expect(def("mh_wait").colour).toBeTypeOf("number");
   });
 
   it("emits dropdowns with labels from the catalog and IR values", () => {

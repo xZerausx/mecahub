@@ -22,9 +22,10 @@ export type ArgJson =
 export type BlockJson = {
   type: string;
   tooltip: string;
-  colour: number;
+  colour?: number;
   inputsInline: boolean;
-  hat?: "cap";
+  /** Hats only: the name of `BLOCK_STYLES`' entry, which carries the colour and the cap. */
+  style?: typeof HAT_STYLE;
   previousStatement?: null;
   nextStatement?: null;
   output?: "Number" | "Boolean";
@@ -42,6 +43,19 @@ export const CATEGORY_COLOURS: Readonly<Record<CategoryId, number>> = {
   math: 260,
   logic: 330,
 };
+
+/** Block style of the hats. */
+export const HAT_STYLE = "mh_hat" as const;
+
+/**
+ * Blockly 13.4.0 draws the cap of a hat only from a block style that has `hat: "cap"` (jsonInit
+ * ignores a top-level `hat`, and an inline `style` object would be consumed by the first
+ * instance). The editor must add this to its theme: `Blockly.Theme.defineTheme(name, { base,
+ * blockStyles: BLOCK_STYLES })`.
+ */
+export const BLOCK_STYLES = {
+  [HAT_STYLE]: { colourPrimary: String(CATEGORY_COLOURS.events), hat: "cap" },
+} as const;
 
 const key = (type: string, rest: string): string => `blocks.${type}.${rest}`;
 const VARIABLE_DEFAULT = "blocks.variable.default";
@@ -104,7 +118,8 @@ const define = (messages: Messages, row: BlockSpec): BlockJson => {
     });
   switch (row.shape) {
     case "hat":
-      def.hat = "cap";
+      def.style = HAT_STYLE;
+      delete def.colour;
       def.nextStatement = null;
       break;
     case "statement":

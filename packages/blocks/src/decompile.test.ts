@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { validateProgram, type Program } from "@mecahub/ir";
 import { describe, expect, it } from "vitest";
 import { compile } from "./compile.js";
-import { decompile } from "./decompile.js";
+import { decompile as decompileResult } from "./decompile.js";
 import type { BlockState } from "./serialization.js";
 import { BLOCK_SPECS } from "./spec.js";
 
@@ -18,6 +18,13 @@ const examples = readdirSync(irDir("examples"))
   .sort()
   .map((f) => ({ name: f, program: load(irDir(`examples/${f}`)) }));
 const allNodes = { name: "all-nodes.json", program: load(irDir("fixtures/all-nodes.json")) };
+
+/** The state of a successful decompile; fails the test otherwise. */
+const decompile = (p: Program) => {
+  const result = decompileResult(p);
+  if (!result.ok) throw new Error(`decompile failed: ${JSON.stringify(result.errors)}`);
+  return result.state;
+};
 
 const n = (value: number) => ({ type: "number", value });
 const program = (scripts: unknown[], variables: unknown[] = []): Program =>
@@ -185,11 +192,71 @@ describe("decompile: shape of the workspace state", () => {
     expect(compile(state)).toMatchObject({ ok: true });
   });
 
-  it("throws on a node it has no block for instead of guessing", () => {
+  it("returns an unknown-node error for a node it has no block for, instead of guessing", () => {
     const bad = program([
       { id: "h", trigger: { type: "start" }, body: [{ id: "a", type: "teleport" }] },
     ]);
-    expect(() => decompile(bad)).toThrow(/teleport/);
+    const result = decompileResult(bad);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.errors).toEqual([
+      expect.objectContaining({
+        code: "unknown-node",
+        message: expect.stringContaining("teleport"),
+      }),
+    ]);
+  });
+
+  it("returns a too-deep error, not a RangeError, for absurdly nested expressions", () => {
+    let expression: unknown = n(1);
+    for (let i = 0; i < 20_000; i++) {
+      expression = { type: "arithmetic", op: "+", left: expression, right: n(1) };
+    }
+    const deep = program([
+      { id: "h", trigger: { type: "start" }, body: [{ id: "w", type: "wait", ms: expression }] },
+    ]);
+    const result = decompileResult(deep);
+    expect(!result.ok && result.errors.map((e) => e.code)).toEqual(["too-deep"]);
+  });
+
+  it("returns a too-deep error for absurdly nested statements", () => {
+    let inner: unknown = { id: "leaf", type: "stopAll" };
+    for (let i = 0; i < 5000; i++) inner = { id: `f${i}`, type: "forever", body: [inner] };
+    const deep = program([{ id: "h", trigger: { type: "start" }, body: [inner] }]);
+    expect(!decompileResult(deep).ok).toBe(true);
+  });
+
+  it("accepts any program that compile accepts: the depth limits match", () => {
+    let inner: unknown = { id: "leaf", type: "stopAll" };
+    for (let i = 0; i < 90; i++) inner = { id: `f${i}`, type: "forever", body: [inner] };
+    const nested = program([{ id: "h", trigger: { type: "start" }, body: [inner] }]);
+    expect(decompileResult(nested).ok).toBe(true);
+    expect(compile(decompile(nested)).ok).toBe(true);
+  });
+});
+
+describe("decompile: lossy conversions are reported", () => {
+  const withVariables = (variables: unknown[]) => program([], variables);
+
+  it("warns for each variable whose initial value is not 0, by id", () => {
+    const result = decompileResult(
+      withVariables([
+        { id: "a", name: "a", initial: 0 },
+        { id: "b", name: "b", initial: 5 },
+        { id: "c", name: "c", initial: -1 },
+      ]),
+    );
+    expect(result.ok && result.warnings).toEqual([
+      { code: "variable-initial-dropped", variableId: "b" },
+      { code: "variable-initial-dropped", variableId: "c" },
+    ]);
+    expect(result.ok && result.state.variables).toHaveLength(3);
+  });
+
+  it("has no warnings when nothing is lost", () => {
+    for (const { program: p } of [...examples, allNodes]) {
+      const result = decompileResult(p);
+      expect(result.ok && result.warnings).toEqual([]);
+    }
   });
 });
 
