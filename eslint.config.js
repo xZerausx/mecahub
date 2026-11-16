@@ -12,6 +12,7 @@ const nodeOnlyPackages = [
   "packages/runtime/**",
   "packages/simulator/**",
   "packages/ir/**",
+  "packages/blocks/**",
 ];
 
 const reactImports = {
@@ -25,6 +26,13 @@ const testingImports = {
   message: "@mecahub/*/testing is test support: import it only from test files.",
 };
 const testFiles = ["**/*.test.{ts,tsx}", "**/src/testing/**", "**/src/test-support/**"];
+
+// blocks only describes Blockly data; the editor itself (and the DOM it needs) is mounted by apps/web.
+const blocklyImports = {
+  group: ["blockly", "blockly/*"],
+  allowTypeImports: true,
+  message: "packages/blocks must run in Node: import types from blockly, never its runtime.",
+};
 
 const nodeOnlyFiles = nodeOnlyPackages
   .map((p) => `${p}/*.ts`)
@@ -90,6 +98,21 @@ export default tseslint.config(
     ignores: testFiles,
     rules: {
       "no-restricted-imports": ["error", { patterns: [reactImports, testingImports] }],
+    },
+  },
+  {
+    // blocks: a flat-config rule is replaced, not merged, so the lists are repeated once more.
+    files: ["packages/blocks/**/*.ts"],
+    rules: { "no-restricted-imports": ["error", { patterns: [reactImports, blocklyImports] }] },
+  },
+  {
+    files: ["packages/blocks/**/*.ts"],
+    ignores: testFiles,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [reactImports, testingImports, blocklyImports] },
+      ],
     },
   },
 );

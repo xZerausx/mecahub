@@ -34,13 +34,18 @@ export {
   ARITHMETIC_OPS,
   COLORS,
   COMPARE_OPS,
+  BOOLEAN_EXPRESSION_FIELDS,
   LOGIC_OPS,
   MOTOR_PORTS,
+  NUMERIC_EXPRESSION_FIELDS,
+  NUMERIC_SENSORS,
   SENSED_COLORS,
   SENSOR_PORTS,
   SOUNDS,
+  STATEMENT_FIELDS,
   STOP_MODES,
   TILT_DIRECTIONS,
+  TRIGGER_FIELDS,
 } from "./types.js";
 export { programSchema } from "./schema.js";
 export { validateProgram } from "./validate.js";
