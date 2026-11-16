@@ -236,6 +236,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
           enter: (scriptId, statementId) => fire(enterListeners, { scriptId, statementId }),
           exit: (scriptId, statementId) => fire(exitListeners, { scriptId, statementId }),
           stopAll: () => this.finish("stopAll"),
+          externalStop: () => this.finish("stopped"),
         },
         script,
         signal,
@@ -258,7 +259,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
     /**
      * Ends the run. Anything but "completed" is a STOP, in this order and all synchronously:
-     * abort every script, hand the STOP frames to the device, drop the subscriptions.
+     * hand the STOP frames to the device (first, so nothing can get in its way), abort every
+     * script, drop the subscriptions. Resolving the result always happens.
      */
     finish(
       reason: RunResult["reason"],
@@ -269,31 +271,46 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     ) {
       if (this.done) return;
       this.done = true;
-      this.root.abort();
-      if (reason !== "completed" && stop) stopDevice();
-      for (const off of this.unsubscribers.splice(0)) off();
-      if (current === this) current = undefined;
       const result: RunResult = error ? { reason, error } : { reason };
-      if (error) {
-        fire(errorListeners, {
-          ...(scriptId === undefined ? {} : { scriptId }),
-          ...(statementId === undefined ? {} : { statementId }),
-          error,
-        });
+      try {
+        // STOP is the very first action; stopDevice never throws.
+        if (reason !== "completed" && stop) stopDevice();
+        this.root.abort();
+        for (const off of this.unsubscribers.splice(0)) {
+          try {
+            off();
+          } catch {
+            // Dropping a subscription must not keep the run from ending.
+          }
+        }
+      } finally {
+        if (current === this) current = undefined;
+        if (error) {
+          fire(errorListeners, {
+            ...(scriptId === undefined ? {} : { scriptId }),
+            ...(statementId === undefined ? {} : { statementId }),
+            error,
+          });
+        }
+        this.resolve(result);
+        fire(finishedListeners, result);
       }
-      this.resolve(result);
-      fire(finishedListeners, result);
     }
   }
 
+  /** Hands STOP to the device. Never throws: a failing STOP is reported through `onError`. */
   const stopDevice = (): void => {
-    void device.stopAll().then((r) => {
-      if (!r.ok) {
-        fire(errorListeners, {
-          error: new RuntimeError("stop-failed", "some STOP writes failed"),
-        });
-      }
-    });
+    const failed = (cause?: unknown): void =>
+      fire(errorListeners, {
+        error: new RuntimeError("stop-failed", "some STOP writes failed", {
+          ...(cause === undefined ? {} : { cause }),
+        }),
+      });
+    try {
+      device.stopAll().then((r) => r.ok || failed(), failed);
+    } catch (err) {
+      failed(err);
+    }
   };
 
   const refused = (error: RuntimeError, notify: boolean): RunResult => {

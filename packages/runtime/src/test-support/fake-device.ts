@@ -32,6 +32,8 @@ export class FakeDevice implements RuntimeDevice {
   /** Fails the next call whose log entry starts with this prefix. */
   failNext: { prefix: string; error: unknown } | undefined;
   stopResult = { ok: true };
+  /** How `stopAll` misbehaves: throws synchronously or returns a rejected promise. */
+  stopFailure: "throw" | "reject" | undefined;
 
   initial = {
     colorDistance: { color: "none", distance: 10 } as ColorDistanceReading,
@@ -92,6 +94,8 @@ export class FakeDevice implements RuntimeDevice {
 
   stopAll(): Promise<{ ok: boolean }> {
     this.log.push("stopAll");
+    if (this.stopFailure === "throw") throw new Error("stop blew up");
+    if (this.stopFailure === "reject") return Promise.reject(new Error("stop rejected"));
     for (const p of this.pending.splice(0)) p.resolve("discarded");
     return Promise.resolve(this.stopResult);
   }

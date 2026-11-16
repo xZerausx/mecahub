@@ -7,9 +7,9 @@ import { realRuntimeClock } from "./clock.js";
 import { createRuntime } from "./runtime.js";
 import type { Runtime } from "./runtime.js";
 import { fromMoveHub } from "./from-move-hub.js";
-import { settle, harness } from "./test-support/harness.js";
+import { advance, settle, harness } from "./test-support/harness.js";
 import { countingClock } from "./test-support/clock.js";
-import { onStart, program, resetIds, s } from "./test-support/ir.js";
+import { onStart, program, resetIds, s, script } from "./test-support/ir.js";
 import { startSim } from "./test-support/sim.js";
 
 // Mandatory (CLAUDE.md): STOP must halt all motors in < 200 ms, always.
@@ -166,16 +166,18 @@ describe("STOP at the device seam", () => {
     expect(h.clock.pending).toBe(0);
   });
 
-  it("is idempotent: the result and onFinished come once", async () => {
+  it("is idempotent: the result and onFinished come once; every stop() call re-sends STOP", async () => {
     const h = harness();
     const finished: string[] = [];
     h.runtime.onFinished((r) => finished.push(r.reason));
     await h.start(program([onStart("a", [s.forever([s.wait(10)])])]));
     h.runtime.stop();
+    h.runtime.stop(); // nothing is running now: an extra STOP, which is cheap and wanted
     h.runtime.stop();
     await settle();
     expect(finished).toEqual(["stopped"]);
     expect(h.result).toEqual({ reason: "stopped" });
+    expect(h.device.log.filter((l) => l === "stopAll")).toHaveLength(3);
   });
 
   it("stop() with nothing running still sends STOP (a finished program may have left a motor on)", async () => {
@@ -221,6 +223,124 @@ describe("STOP at the device seam", () => {
     h.runtime.stop();
     await settle();
     expect(h.errors).toMatchObject([{ code: "stop-failed" }]);
+  });
+});
+
+describe("STOP when the device misbehaves", () => {
+  it.each(["throw", "reject"] as const)(
+    "a stopAll that %ss still ends the run, drops subscriptions and reports stop-failed",
+    async (failure) => {
+      const h = harness();
+      h.device.stopFailure = failure;
+      await h.start(
+        program([
+          script("b", { type: "buttonPressed" }, [s.forTime("A", 50, 1000)]),
+          onStart("w", [s.forever([s.wait(10)])]),
+        ]),
+      );
+      expect(() => h.runtime.stop()).not.toThrow();
+      await settle();
+      expect(h.result).toEqual({ reason: "stopped" });
+      expect(h.runtime.running).toBe(false);
+      expect(h.device.subscriptions).toEqual([]);
+      expect(h.errors).toMatchObject([{ code: "stop-failed" }]);
+      expect(h.clock.pending).toBe(0);
+    },
+  );
+
+  it("STOP is the first thing finish() does: before listeners or aborts run", async () => {
+    const h = harness();
+    await h.start(program([onStart("a", [s.forever([s.wait(10)])])]));
+    const order: string[] = [];
+    h.runtime.onFinished(() => order.push(`finished after ${h.device.log.at(-1)}`));
+    h.runtime.stop();
+    expect(order).toEqual(["finished after stopAll"]);
+  });
+});
+
+describe("a STOP that did not come from the runtime", () => {
+  it("ends the run when a pending command is discarded by a hub-level stop", async () => {
+    const h = harness();
+    await h.start(program([onStart("a", [s.forTime("A", 50, 1000), s.led("red")])]));
+    h.device.complete("motor.A", "discarded"); // what hub.stopAll() does to pending feedback
+    await settle();
+    expect(h.result).toEqual({ reason: "stopped" });
+    expect(h.device.log).toEqual(["motor.A.runFor(1000,50)", "stopAll"]);
+  });
+
+  it("the same for rotate and for a pending chunk of a long timed command", async () => {
+    const h = harness();
+    await h.start(
+      program([
+        onStart("a", [s.forDegrees("A", 50, 90), s.led("red")]),
+        onStart("b", [s.forTime("B", 50, 70_000), s.led("blue")]),
+      ]),
+    );
+    h.device.complete("motor.B", "completed"); // first chunk done, second goes out
+    await settle();
+    h.device.complete("motor.A", "discarded");
+    await settle();
+    expect(h.result).toEqual({ reason: "stopped" });
+    expect(h.device.log).not.toContain("led(red)");
+    expect(h.device.log).not.toContain("led(blue)");
+  });
+
+  it("a takeover by another script still just ends the replaced statement", async () => {
+    const h = harness();
+    await h.start(
+      program([
+        onStart("a", [s.forTime("A", 50, 5000), s.led("red")]),
+        onStart("b", [s.wait(100), s.start("A", -20)]),
+      ]),
+    );
+    await advance(h.clock, 120); // b took over A; the hub now reports a's command discarded
+    h.device.complete("motor.A.runFor", "discarded");
+    await settle();
+    expect(h.device.log).toEqual(["motor.A.runFor(5000,50)", "motor.A.run(-20)", "led(red)"]);
+    expect(h.runtime.running).toBe(false); // both scripts simply finished
+    expect(h.result).toEqual({ reason: "completed" });
+  });
+});
+
+describe("STOP edge cases", () => {
+  it("run() right after stop() starts a fresh run while the old STOP is in flight", async () => {
+    const h = harness();
+    await h.start(program([onStart("a", [s.forever([s.wait(10)])])]));
+    h.runtime.stop();
+    const second = h.runtime.run(program([onStart("b", [s.led("red")])]));
+    await settle();
+    expect(await second).toEqual({ reason: "completed" });
+    expect(h.device.log).toEqual(["stopAll", "led(red)"]);
+  });
+
+  it("stop() called from an onBlockEnter listener cancels that very statement", async () => {
+    const h = harness();
+    const led = s.led("red");
+    h.runtime.onBlockEnter((e) => e.statementId === led.id && h.runtime.stop());
+    await h.start(program([onStart("a", [s.wait(5), led, s.led("blue")])]));
+    await advance(h.clock, 20);
+    expect(h.device.log).toEqual(["stopAll"]);
+    expect(h.result).toEqual({ reason: "stopped" });
+  });
+
+  it("STOP while an event script's statement awaits a hub write", async () => {
+    const h = harness();
+    await h.start(
+      program([script("b", { type: "buttonPressed" }, [s.forTime("A", 50, 1000), s.led("red")])]),
+    );
+    h.device.pushButton(true);
+    await settle();
+    expect(h.device.pending).toHaveLength(1);
+    h.runtime.stop();
+    await settle();
+    expect(h.device.log).toEqual([
+      "subscribe(button)",
+      "motor.A.runFor(1000,50)",
+      "stopAll",
+      "unsubscribe(button)",
+    ]);
+    expect(h.result).toEqual({ reason: "stopped" });
+    expect(h.clock.pending).toBe(0);
   });
 });
 

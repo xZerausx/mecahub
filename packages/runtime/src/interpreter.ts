@@ -18,6 +18,8 @@ export interface ScriptContext {
   exit(scriptId: string, statementId: string): void;
   /** The `stopAll` statement: STOP everything and end the run. */
   stopAll(): void;
+  /** A command was discarded by a STOP the runtime did not send (e.g. `hub.stopAll()`): end the run. */
+  externalStop(): void;
 }
 
 /** The longest timed command the hub accepts (its time field is a signed 16-bit value). */
@@ -219,8 +221,11 @@ export class ScriptRunner {
 
   private async rotated(motors: readonly [MotorPort, number][], degrees: number): Promise<void> {
     if (degrees === 0 || motors.every(([, speed]) => speed === 0)) return;
-    await this.claimed(motors, (port, speed) =>
-      this.send(() => this.ctx.device.motor(port).rotate(degrees, speed)),
+    await this.claimed(motors, async (port, speed, claim) =>
+      this.settled(
+        await this.send(() => this.ctx.device.motor(port).rotate(degrees, speed)),
+        claim,
+      ),
     );
   }
 
@@ -249,6 +254,19 @@ export class ScriptRunner {
     }
   }
 
+  /**
+   * A command reported "discarded" while its port claim is intact: another script's command would
+   * have aborted the claim first, so this is a STOP from outside (the app called the hub directly).
+   * The whole run ends: nothing may send motor commands after a STOP.
+   */
+  private settled(status: FeedbackStatus, claim: AbortSignal): FeedbackStatus {
+    if (status === "discarded" && !claim.aborted) {
+      this.ctx.externalStop();
+      throw new Cancelled();
+    }
+    return status;
+  }
+
   private async runChunks(
     motor: MotorHandle,
     speed: number,
@@ -259,7 +277,7 @@ export class ScriptRunner {
     for (let left = ms; left > 0 && status !== "discarded"; left -= MAX_TIMED_MS) {
       if (claim.aborted) return "discarded"; // replaced meanwhile: send nothing more
       const chunk = Math.min(left, MAX_TIMED_MS);
-      status = await this.send(() => motor.runFor(chunk, speed));
+      status = this.settled(await this.send(() => motor.runFor(chunk, speed)), claim);
     }
     return status;
   }
