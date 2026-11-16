@@ -1,5 +1,5 @@
 import { ManualClock } from "@mecahub/simulator";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Cancelled, race, sleep, yieldTurn } from "./abortable.js";
 import { realRuntimeClock } from "./clock.js";
 
@@ -8,14 +8,14 @@ const flush = () => new Promise<void>((r) => setImmediate(r));
 describe("sleep", () => {
   it("resolves when the clock reaches the deadline", async () => {
     const clock = new ManualClock();
-    const done = vi_fn();
+    const done = vi.fn();
     void sleep(clock, 100, new AbortController().signal).then(done);
     clock.advance(99);
     await flush();
-    expect(done.calls).toBe(0);
+    expect(done).toHaveBeenCalledTimes(0);
     clock.advance(1);
     await flush();
-    expect(done.calls).toBe(1);
+    expect(done).toHaveBeenCalledTimes(1);
   });
 
   it("rejects with Cancelled as soon as the signal aborts and clears its timer", async () => {
@@ -71,13 +71,13 @@ describe("race", () => {
 describe("yieldTurn", () => {
   it("takes a macrotask on the clock, not a microtask", async () => {
     const clock = new ManualClock();
-    const done = vi_fn();
+    const done = vi.fn();
     void yieldTurn(clock, new AbortController().signal).then(done);
     await flush();
-    expect(done.calls).toBe(0);
+    expect(done).toHaveBeenCalledTimes(0);
     clock.advance(0);
     await flush();
-    expect(done.calls).toBe(1);
+    expect(done).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -88,8 +88,3 @@ describe("realRuntimeClock", () => {
     expect(typeof realRuntimeClock.now()).toBe("number");
   });
 });
-
-function vi_fn() {
-  const f = Object.assign(() => void f.calls++, { calls: 0 });
-  return f;
-}
