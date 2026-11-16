@@ -126,4 +126,9 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The one smoke test that runs real Blockly (in Node, with jsdom).
+    files: ["packages/blocks/src/blockly-smoke.test.ts"],
+    rules: { "no-restricted-imports": "off", "no-restricted-syntax": "off" },
+  },
 );
