@@ -63,11 +63,15 @@ export type BlockSpec = {
   level: Level;
   category: CategoryId;
   shape: Shape;
-  /** The IR node it maps to; `fixed` are IR properties the block always sets (a sensor kind). */
+  /**
+   * The IR node it maps to; `fixed` are IR properties the block always sets: a sensor kind, or an
+   * IR literal such as `{ type: "number", value: 50 }`. The compiler copies them (structuredClone);
+   * the decompiler matches them by deep equality.
+   */
   ir: {
     group: "trigger" | "statement" | "expression";
     kind: string;
-    fixed?: Record<string, string>;
+    fixed?: Record<string, unknown>;
   };
   /** In the order of the `%1..%n` tokens of the message (statement inputs follow, one per line). */
   args: readonly Arg[];
@@ -160,7 +164,7 @@ const expr = (
   shape: "number" | "boolean",
   kind: string,
   args: Arg[] = [],
-  fixed?: Record<string, string>,
+  fixed?: Record<string, unknown>,
 ): BlockSpec => ({
   type,
   level: "advanced",

@@ -362,3 +362,15 @@ describe("compile(decompile(p)) deep-equals p", () => {
     expect(compile(decompile(p))).toEqual({ ok: true, program: p });
   });
 });
+
+describe("decompile: level option", () => {
+  it("defaults to advanced and only produces advanced blocks", () => {
+    const p = program([
+      { id: "h", trigger: { type: "start" }, body: [{ id: "a", type: "setLed", color: "red" }] },
+    ]);
+    expect(decompileResult(p, { level: "advanced" })).toEqual(decompileResult(p));
+    for (const type of typesIn(decompile(p).blocks.blocks)) {
+      expect(BLOCK_SPECS.find((s) => s.type === type)?.level).toBe("advanced");
+    }
+  });
+});

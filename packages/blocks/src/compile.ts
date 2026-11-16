@@ -105,7 +105,7 @@ const buildNode = (
   depth: number,
 ): IrNode | undefined => {
   const before = ctx.failures;
-  const out: IrNode = { type: spec.ir.kind, ...spec.ir.fixed };
+  const out: IrNode = { type: spec.ir.kind, ...structuredClone(spec.ir.fixed) };
   for (const arg of spec.args) {
     if (arg.slot === "field") {
       const read = readField(arg, node, ctx);
