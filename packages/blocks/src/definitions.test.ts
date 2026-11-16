@@ -65,6 +65,14 @@ describe.each(Object.keys(catalogs))("block messages (%s)", (locale) => {
 });
 
 describe("wording for kids", () => {
+  it("counts turns in steps, like the other movement blocks (not in 'giros')", () => {
+    for (const type of ["mh_icon_turn_left", "mh_icon_turn_right"]) {
+      expect(en[`blocks.${type}.tooltip` as keyof typeof en], type).toMatch(/turn steps/);
+      expect(es[`blocks.${type}.tooltip` as keyof typeof es], type).toMatch(/pasos de giro/);
+      expect(es[`blocks.${type}.tooltip` as keyof typeof es], type).not.toMatch(/giros/);
+    }
+  });
+
   it("avoids programmer jargon and regional words in every block text", () => {
     for (const [locale, catalog] of Object.entries(catalogs)) {
       for (const [key, text] of Object.entries(catalog)) {

@@ -19,10 +19,19 @@ const idle: EditorSnapshot = {
   errorBlockIds: [],
 };
 
-function fakeController(snapshot: EditorSnapshot = idle) {
-  const controller: EditorController = {
+function fakeController(initial: EditorSnapshot = idle) {
+  let snapshot = initial;
+  const listeners = new Set<() => void>();
+  const controller: EditorController & { set(next: EditorSnapshot): void } = {
+    set: (next) => {
+      snapshot = next;
+      for (const l of listeners) l();
+    },
     getSnapshot: () => snapshot,
-    subscribe: () => () => undefined,
+    subscribe: (l) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
     connect: vi.fn(() => Promise.resolve()),
     run: vi.fn(() => Promise.resolve("completed" as const)),
     stop: vi.fn(),
@@ -123,6 +132,38 @@ describe("EditorPage", () => {
       blocks: { blocks: { type: string }[] };
     };
     expect(state.blocks.blocks.map((b) => b.type)).toEqual(["mh_icon_when_start"]);
+  });
+
+  it("moves the keyboard focus to STOP when Run starts and disables itself", () => {
+    const controller = fakeController();
+    mount(controller);
+    const run = button(en["editor.run"]);
+    act(() => run?.focus());
+    act(() => run?.click());
+    act(() => controller.set({ ...idle, running: true }));
+    expect(document.activeElement).toBe(button(en["editor.stop"]));
+  });
+
+  it("does not steal the focus when something else has it", () => {
+    const controller = fakeController();
+    mount(controller);
+    const level = button(en["editor.level.advanced"]);
+    act(() => level?.focus());
+    act(() => controller.set({ ...idle, running: true }));
+    expect(document.activeElement).toBe(level);
+  });
+
+  it("changing the level while a program runs leaves the run alone and STOP still works", () => {
+    const controller = fakeController({ ...idle, running: true });
+    mount(controller);
+    act(() => button(en["editor.level.advanced"])?.click());
+    expect(controller.run).not.toHaveBeenCalled();
+    expect(controller.dispose).not.toHaveBeenCalled();
+    expect(controller.stop).not.toHaveBeenCalled();
+    const stop = button(en["editor.stop"]);
+    expect(stop?.disabled).toBe(false);
+    act(() => stop?.click());
+    expect(controller.stop).toHaveBeenCalledTimes(1);
   });
 
   it("previews the robot: LED and wheel states as data attributes", () => {

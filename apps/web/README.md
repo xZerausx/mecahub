@@ -16,7 +16,7 @@ simulated hub light and the two wheels; it exposes `data-led`, `data-wheel-a` an
 the e2e tests.
 
 - **Levels**: Icons (default; pictures only, zelos renderer, scale 1.5, a flat flyout) and Advanced
-  (categories, the full catalogue). Switching re-injects Blockly and keeps the program; both levels'
+  (categories, the full catalogue). Switching re-injects Blockly and keeps the program, but not the undo history, scroll position or zoom; both levels'
   blocks are always registered.
 - **STOP** is always enabled, so is Esc; both call `runtime.stop()` synchronously. The mandatory
   budget test is in `editor-controller.test.ts` (`STOP_BUDGET_MS` = 200 ms, simulator with 30 ms

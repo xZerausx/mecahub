@@ -26,7 +26,8 @@ interface Props {
 /**
  * Mounts Blockly. The workspace is injected in an effect and disposed in its cleanup, so React
  * StrictMode's mount/unmount/mount leaves exactly one. Changing `level` re-injects (the renderer
- * and the toolbox cannot change in place) and carries the program over.
+ * and the toolbox cannot change in place) and carries the program over, but NOT the undo history,
+ * scroll position or zoom (they belong to the old workspace).
  */
 export function BlocklyWorkspace(props: Props) {
   const { level, locale, apiRef, initialState } = props;
@@ -59,7 +60,10 @@ export function BlocklyWorkspace(props: Props) {
     const ws = workspace.current;
     if (!ws || highlightedBlockId === undefined) return;
     ws.highlightBlock(highlightedBlockId, true);
-    return () => ws.highlightBlock(highlightedBlockId, false);
+    return () => {
+      // the injection effect's cleanup (which disposes ws) may have run first
+      if (workspace.current === ws) ws.highlightBlock(highlightedBlockId, false);
+    };
   }, [highlightedBlockId, level, locale]);
 
   useEffect(() => {

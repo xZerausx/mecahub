@@ -24,6 +24,18 @@ export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
   const api = useRef<WorkspaceApi | null>(null);
+  const runButton = useRef<HTMLButtonElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+
+  // Run disables itself while the program runs, which would drop the keyboard focus on <body>:
+  // hand it to STOP, the button the child needs next. Focus somewhere else is left alone.
+  useEffect(() => {
+    if (!snapshot.running) return;
+    const focused = document.activeElement;
+    if (focused === runButton.current || focused === document.body || focused === null) {
+      stopButton.current?.focus();
+    }
+  }, [snapshot.running]);
 
   useEffect(() => {
     controller.connect().catch(() => undefined); // a failure shows when Run reports it
@@ -50,6 +62,7 @@ export function EditorPage({ controller, locale, t }: Props) {
       <header className="editor-bar">
         <button
           type="button"
+          ref={runButton}
           className="big-button run"
           aria-label={t("editor.run")}
           disabled={snapshot.running}
@@ -60,6 +73,7 @@ export function EditorPage({ controller, locale, t }: Props) {
           </svg>
         </button>
         <button
+          ref={stopButton}
           type="button"
           className="big-button stop"
           aria-label={t("editor.stop")}
