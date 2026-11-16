@@ -46,7 +46,7 @@ describe("sensor setup", () => {
   it("a program that reads no sensor subscribes to nothing", async () => {
     const h = harness();
     await h.start(program([onStart("s", [s.led("red")])]));
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 
   it("start scripts begin only after every sensor reported once, all together", async () => {

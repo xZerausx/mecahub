@@ -180,12 +180,42 @@ describe("STOP at the device seam", () => {
     expect(h.device.log.filter((l) => l === "stopAll")).toHaveLength(3);
   });
 
-  it("stop() with nothing running still sends STOP (a finished program may have left a motor on)", async () => {
+  it("a program that completes on its own sends STOP, so no motor is left running", async () => {
     const h = harness();
     await h.start(program([onStart("a", [s.start("A", 50)])]));
     expect(h.result).toEqual({ reason: "completed" });
-    h.runtime.stop();
     expect(h.device.log).toEqual(["motor.A.run(50)", "stopAll"]);
+  });
+
+  it("stop() with nothing running still sends STOP", async () => {
+    const h = harness();
+    await h.start(program([onStart("a", [s.start("A", 50)])]));
+    h.runtime.stop();
+    expect(h.device.log).toEqual(["motor.A.run(50)", "stopAll", "stopAll"]);
+  });
+
+  it("on the simulator, a completed program leaves every motor still within the budget", async () => {
+    vi.useFakeTimers();
+    const all = await setup();
+    const done = all.runtime.run(program([onStart("a", [s.start("A", 50), s.start("B", -50)])]));
+    let ms = 0;
+    let finished = false;
+    void done.then(() => (finished = true));
+    while (!finished && ms < 1000) {
+      await vi.advanceTimersByTimeAsync(5);
+      ms += 5;
+    }
+    expect(await done).toEqual({ reason: "completed" });
+    const t0 = ms;
+    while (!still(all) && ms - t0 < 1000) {
+      await vi.advanceTimersByTimeAsync(5);
+      ms += 5;
+    }
+    expect(still(all)).toBe(true);
+    expect(ms - t0).toBeLessThan(BUDGET_MS);
+    const sent = outputsSince(all, 0);
+    expect(sent.some((m) => !isStopFrame(m))).toBe(true); // the program did command the motors
+    expect(isStopFrame(sent.at(-1)!)).toBe(true); // and the run ended with STOP (StartPower2 on AB)
   });
 
   it("a script that has not started its statement yet never sends after STOP", async () => {
@@ -293,10 +323,17 @@ describe("a STOP that did not come from the runtime", () => {
         onStart("b", [s.wait(100), s.start("A", -20)]),
       ]),
     );
-    await advance(h.clock, 120); // b took over A; the hub now reports a's command discarded
-    h.device.complete("motor.A.runFor", "discarded");
+    await advance(h.clock, 120); // b took over A: a's statement ended, both scripts finished
     await settle();
-    expect(h.device.log).toEqual(["motor.A.runFor(5000,50)", "motor.A.run(-20)", "led(red)"]);
+    // The completion STOP settles a's abandoned runFor as "discarded" after the run is done: that
+    // late "discarded" must not count as an external STOP (no second STOP, result unchanged).
+    expect(h.device.pending).toHaveLength(0);
+    expect(h.device.log).toEqual([
+      "motor.A.runFor(5000,50)",
+      "motor.A.run(-20)",
+      "led(red)",
+      "stopAll",
+    ]);
     expect(h.runtime.running).toBe(false); // both scripts simply finished
     expect(h.result).toEqual({ reason: "completed" });
   });
@@ -310,7 +347,7 @@ describe("STOP edge cases", () => {
     const second = h.runtime.run(program([onStart("b", [s.led("red")])]));
     await settle();
     expect(await second).toEqual({ reason: "completed" });
-    expect(h.device.log).toEqual(["stopAll", "led(red)"]);
+    expect(h.device.log).toEqual(["stopAll", "led(red)", "stopAll"]);
   });
 
   it("stop() called from an onBlockEnter listener cancels that very statement", async () => {

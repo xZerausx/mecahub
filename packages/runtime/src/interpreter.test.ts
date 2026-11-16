@@ -27,6 +27,7 @@ describe("simple statements", () => {
       "drive.brake",
       "motor.B.brake",
       "led(red)",
+      "stopAll",
     ]);
     expect(h.result).toEqual({ reason: "completed" });
   });
@@ -43,7 +44,7 @@ describe("simple statements", () => {
     await advance(h.clock, 490);
     expect(h.device.log).toEqual([]);
     await advance(h.clock, 20);
-    expect(h.device.log).toEqual(["led(blue)"]);
+    expect(h.device.log).toEqual(["led(blue)", "stopAll"]);
   });
 });
 
@@ -53,7 +54,7 @@ describe("timed motor statements", () => {
     expect(h.device.log).toEqual(["motor.A.runFor(1000,60)"]);
     h.device.complete("motor.A");
     await settle();
-    expect(h.device.log).toEqual(["motor.A.runFor(1000,60)", "led(green)"]);
+    expect(h.device.log).toEqual(["motor.A.runFor(1000,60)", "led(green)", "stopAll"]);
   });
 
   it("rotate waits for feedback", async () => {
@@ -61,7 +62,7 @@ describe("timed motor statements", () => {
     expect(h.device.log).toEqual(["motor.B.rotate(360,-40)"]);
     h.device.complete();
     await settle();
-    expect(h.device.log.at(-1)).toBe("led(green)");
+    expect(h.device.log.slice(-2)).toEqual(["led(green)", "stopAll"]);
   });
 
   it("clamps computed speed, and splits long times into hub-sized chunks", async () => {
@@ -82,17 +83,17 @@ describe("timed motor statements", () => {
     const h = await run([s.forTime("A", 0, 300), s.led("red")]);
     expect(h.device.log).toEqual([]);
     await advance(h.clock, 310);
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 
   it("a ForDegrees whose computed speed or angle is 0 skips the command", async () => {
     const h = await run([s.forDegrees("A", num(0.2), 90), s.forDegrees("A", 50, 0), s.led("red")]);
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 
   it("negative computed times and angles count as 0", async () => {
     const h = await run([s.forTime("A", 50, calc("-", 0, 10)), s.led("red")]);
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 });
 
@@ -105,7 +106,7 @@ describe("drive statements with a speed per motor", () => {
     expect(h.device.log).not.toContain("led(green)");
     h.device.complete("motor.B");
     await settle();
-    expect(h.device.log.at(-1)).toBe("led(green)");
+    expect(h.device.log.slice(-2)).toEqual(["led(green)", "stopAll"]);
   });
 
   it("driveForDegrees rotates each motor; a zero-speed wheel is held (pivot turn)", async () => {
@@ -115,14 +116,14 @@ describe("drive statements with a speed per motor", () => {
 
   it("driveForDegrees with both speeds 0 skips the command", async () => {
     const h = await run([s.driveForDegrees(calc("*", 0, 5), 0, 200), s.led("red")]);
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 
   it("driveForTime with both speeds 0 just waits", async () => {
     const h = await run([s.driveForTime(0, 0, 200), s.led("red")]);
     expect(h.device.log).toEqual([]);
     await advance(h.clock, 210);
-    expect(h.device.log).toEqual(["led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll"]);
   });
 });
 
@@ -130,7 +131,7 @@ describe("control flow", () => {
   it("repeat runs its body n times (counts clamp to integers >= 0)", async () => {
     const h = await run([s.repeat(3, [s.led("red")]), s.repeat(calc("-", 0, 2), [s.led("blue")])]);
     await advance(h.clock, 100);
-    expect(h.device.log).toEqual(["led(red)", "led(red)", "led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "led(red)", "led(red)", "stopAll"]);
     expect(h.result?.reason).toBe("completed");
   });
 
@@ -140,7 +141,7 @@ describe("control flow", () => {
       s.if(cmp(">", num(1), num(2)), [s.led("green")], [s.led("white")]),
       s.if(cmp(">", num(1), num(2)), [s.led("pink")]),
     ]);
-    expect(h.device.log).toEqual(["led(red)", "led(white)"]);
+    expect(h.device.log).toEqual(["led(red)", "led(white)", "stopAll"]);
   });
 
   it("while loops until its condition is false; variables reset on every run", async () => {
@@ -152,11 +153,11 @@ describe("control flow", () => {
     );
     await h.start(prog);
     await advance(h.clock, 100);
-    expect(h.device.log).toEqual(["led(red)", "led(red)", "led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "led(red)", "led(red)", "stopAll"]);
     h.device.log.length = 0;
     void h.runtime.run(prog);
     await advance(h.clock, 100);
-    expect(h.device.log).toHaveLength(3); // initial 2 again, not 5
+    expect(h.device.log.filter((l) => l === "led(red)")).toHaveLength(3); // initial 2 again, not 5
   });
 
   it("forever repeats until STOP", async () => {
@@ -183,7 +184,7 @@ describe("control flow", () => {
     await advance(h.clock, 150);
     expect(h.device.log).toEqual([]);
     await advance(h.clock, 100);
-    expect(h.device.log).toEqual(["led(green)"]);
+    expect(h.device.log).toEqual(["led(green)", "stopAll"]);
   });
 
   it("scripts run in parallel", async () => {
@@ -195,7 +196,7 @@ describe("control flow", () => {
       ]),
     );
     await advance(h.clock, 120);
-    expect(h.device.log).toEqual(["led(blue)", "led(red)"]);
+    expect(h.device.log).toEqual(["led(blue)", "led(red)", "stopAll"]);
     expect(h.result?.reason).toBe("completed");
   });
 
@@ -208,7 +209,7 @@ describe("control flow", () => {
       ]),
     );
     await advance(h.clock, 150);
-    expect(h.device.log).toEqual(["led(red)", "led(blue)"]);
+    expect(h.device.log).toEqual(["led(red)", "led(blue)", "stopAll"]);
     expect(h.result).toEqual({ reason: "completed" });
   });
 
@@ -304,7 +305,7 @@ describe("conflicting commands (last command wins per port)", () => {
     );
     expect(h.device.log).toEqual(["motor.A.runFor(5000,50)"]);
     await advance(h.clock, 120);
-    expect(h.device.log).toEqual(["motor.A.runFor(5000,50)", "motor.A.run(-20)", "led(red)"]);
+    expect(h.device.log).toEqual(["motor.A.runFor(5000,50)", "motor.A.run(-20)", "led(red)", "stopAll"]);
   });
 
   it("a command on B replaces a waiting drive on AB, and a drive replaces a waiting command on A", async () => {
@@ -320,7 +321,7 @@ describe("conflicting commands (last command wins per port)", () => {
     await advance(h.clock, 350);
     expect(h.device.log).toContain("led(red)");
     expect(h.device.log).toContain("led(pink)");
-    expect(h.device.log.at(-1)).toBe("led(pink)");
+    expect(h.device.log.slice(-2)).toEqual(["led(pink)", "stopAll"]);
   });
 
   it("commands on different ports do not interfere", async () => {
@@ -381,6 +382,6 @@ describe("errors and refusals", () => {
     const prog = program([onStart("s", [s.led("red")])]);
     await h.start(prog);
     await h.start(prog);
-    expect(h.device.log).toEqual(["led(red)", "led(red)"]);
+    expect(h.device.log).toEqual(["led(red)", "stopAll", "led(red)", "stopAll"]);
   });
 });

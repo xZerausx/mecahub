@@ -258,9 +258,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     }
 
     /**
-     * Ends the run. Anything but "completed" is a STOP, in this order and all synchronously:
-     * hand the STOP frames to the device (first, so nothing can get in its way), abort every
-     * script, drop the subscriptions. Resolving the result always happens.
+     * Ends the run with a STOP, "completed" included (a finished program must not leave a motor
+     * running), in this order and all synchronously: hand the STOP frames to the device (first,
+     * so nothing can get in its way), abort every script, drop the subscriptions. Resolving the
+     * result always happens.
      */
     finish(
       reason: RunResult["reason"],
@@ -274,7 +275,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       const result: RunResult = error ? { reason, error } : { reason };
       try {
         // STOP is the very first action; stopDevice never throws.
-        if (reason !== "completed" && stop) stopDevice();
+        if (stop) stopDevice();
         this.root.abort();
         for (const off of this.unsubscribers.splice(0)) {
           try {
