@@ -5,11 +5,13 @@ import { vi } from "vitest";
 
 /**
  * A MoveHub over a SimulatedHub, connected. Same shape as the hub package's own test helper (a
- * minimal copy: it is not exported there). Uses vitest fake timers, because the hub layer's timers
+ * minimal copy: it is not exported there). Uses vitest fake timers (unless `realTimers`), because the hub layer's timers
  * are real `setTimeout`s: the caller restores real timers afterwards.
  */
-export async function startSim(options: { config?: SimHubConfig; latency?: number } = {}) {
-  vi.useFakeTimers();
+export async function startSim(
+  options: { config?: SimHubConfig; latency?: number; realTimers?: boolean } = {},
+) {
+  if (!options.realTimers) vi.useFakeTimers();
   const hub = new SimulatedHub(options.config ?? defaultMoveHubConfig());
   const sim = new SimulatorTransport(
     hub,
@@ -17,7 +19,7 @@ export async function startSim(options: { config?: SimHubConfig; latency?: numbe
   );
   const moveHub = new MoveHub(sim);
   const connecting = moveHub.connect();
-  await vi.advanceTimersByTimeAsync(300);
+  if (!options.realTimers) await vi.advanceTimersByTimeAsync(300);
   await connecting;
   sim.sentFrames.splice(0); // what connect() wrote
   return {
