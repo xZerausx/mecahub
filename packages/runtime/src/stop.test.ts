@@ -213,6 +213,9 @@ describe("STOP at the device seam", () => {
     }
     expect(still(all)).toBe(true);
     expect(ms - t0).toBeLessThan(BUDGET_MS);
+    const sent = outputsSince(all, 0);
+    expect(sent.some((m) => !isStopFrame(m))).toBe(true); // the program did command the motors
+    expect(isStopFrame(sent.at(-1)!)).toBe(true); // and the run ended with STOP (StartPower2 on AB)
   });
 
   it("a script that has not started its statement yet never sends after STOP", async () => {
@@ -322,7 +325,9 @@ describe("a STOP that did not come from the runtime", () => {
     );
     await advance(h.clock, 120); // b took over A: a's statement ended, both scripts finished
     await settle();
-    // The completion STOP settles a's abandoned runFor; its late "discarded" is not an external STOP.
+    // The completion STOP settles a's abandoned runFor as "discarded" after the run is done: that
+    // late "discarded" must not count as an external STOP (no second STOP, result unchanged).
+    expect(h.device.pending).toHaveLength(0);
     expect(h.device.log).toEqual([
       "motor.A.runFor(5000,50)",
       "motor.A.run(-20)",

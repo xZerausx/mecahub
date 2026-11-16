@@ -82,7 +82,7 @@ Assumptions (`supuesto`, all `TODO(hw)`):
 - The hub reports the current value right after a sensor subscription is set up. Without it the run ends with `sensor-timeout`.
 - `driveForTime` / `driveForDegrees` have no hub command for the virtual port, so they run `runFor` / `rotate` on A and B in parallel. The two motors finish independently, so unequal speeds do not draw a straight line the way the virtual port might. With one speed at 0, that wheel is held (brake) instead of left alone. Times above 32767 ms are sent as chunks.
 - Sounds go to an injected `SoundSink` and are not awaited; the default plays nothing.
-- A program that completes on its own ends with a STOP, like any other run: a finished program never leaves a motor running (decided 2026-11-15, safety for young users).
+- A program that completes on its own ends with a STOP, like any other run: a finished program never leaves a motor running (decided 2026-11-15, safety for young users). `onFinished` fires after that STOP is handed to the device, so a run started from it is ordered after the STOP; a late `stop-failed` from the finished run may still reach `onError` while the next run is active.
 
 ## Consequences
 
