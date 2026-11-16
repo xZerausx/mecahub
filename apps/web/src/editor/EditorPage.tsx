@@ -27,6 +27,11 @@ export function EditorPage({ controller, locale, t }: Props) {
   const [confirming, setConfirming] = useState(false);
   const advancedButton = useRef<HTMLButtonElement>(null);
 
+  const confirmingRef = useRef(false);
+  useEffect(() => {
+    confirmingRef.current = confirming;
+  }, [confirming]);
+
   /** Closes the modal and gives the focus back to the level toggle that opened it. */
   const closeModal = useCallback(() => {
     setConfirming(false);
@@ -57,12 +62,12 @@ export function EditorPage({ controller, locale, t }: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         controller.stop(); // STOP has priority: Esc is never swallowed by the modal
-        closeModal(); // and, with the modal open, it also means Cancel
+        if (confirmingRef.current) closeModal(); // with the modal open it also means Cancel
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [controller]);
+  }, [controller, closeModal]);
 
   const run = () => {
     const state = api.current?.save();

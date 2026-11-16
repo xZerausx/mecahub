@@ -104,6 +104,14 @@ describe("EditorPage", () => {
     expect(controller.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("Escape without the modal does not move the keyboard focus", () => {
+    mount(fakeController());
+    const run = button(en["editor.run"]);
+    act(() => run?.focus());
+    act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(document.activeElement).toBe(run);
+  });
+
   it("Run saves the workspace and hands it to the controller", () => {
     const controller = fakeController();
     mount(controller);
