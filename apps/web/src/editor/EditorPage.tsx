@@ -26,6 +26,12 @@ export function EditorPage({ controller, locale, t }: Props) {
   const [level, setLevel] = useState<Level>("icons");
   const [confirming, setConfirming] = useState(false);
   const advancedButton = useRef<HTMLButtonElement>(null);
+
+  /** Closes the modal and gives the focus back to the level toggle that opened it. */
+  const closeModal = useCallback(() => {
+    setConfirming(false);
+    advancedButton.current?.focus();
+  }, []);
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -51,7 +57,7 @@ export function EditorPage({ controller, locale, t }: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         controller.stop(); // STOP has priority: Esc is never swallowed by the modal
-        setConfirming(false); // and, with the modal open, it also means Cancel
+        closeModal(); // and, with the modal open, it also means Cancel
       }
     };
     window.addEventListener("keydown", onKey);
@@ -64,7 +70,7 @@ export function EditorPage({ controller, locale, t }: Props) {
   };
 
   return (
-    <main className="editor" data-level={level}>
+    <main className={confirming ? "editor confirming" : "editor"} data-level={level}>
       <header className="editor-bar">
         <button
           type="button"
@@ -101,8 +107,12 @@ export function EditorPage({ controller, locale, t }: Props) {
               onClick={() => {
                 if (value === level) return;
                 // Icons -> Advanced asks first; going back to Icons does not.
-                if (value === "advanced") setConfirming(true);
-                else setLevel(value);
+                if (value === "advanced") {
+                  // A change of level halts the robot first, so the question never waits on a
+                  // running program.
+                  controller.stop();
+                  setConfirming(true);
+                } else setLevel(value);
               }}
             >
               <svg viewBox="0 0 48 48" aria-hidden="true">
@@ -125,13 +135,11 @@ export function EditorPage({ controller, locale, t }: Props) {
       {confirming && (
         <LevelConfirmModal
           t={t}
-          onCancel={() => {
-            setConfirming(false);
-            advancedButton.current?.focus();
-          }}
+          stopButton={stopButton}
+          onCancel={closeModal}
           onConfirm={() => {
-            setConfirming(false);
             setLevel("advanced");
+            closeModal();
           }}
         />
       )}

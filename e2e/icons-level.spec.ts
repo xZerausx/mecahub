@@ -141,6 +141,20 @@ for (const l of LOCALES) {
       await expect(level(l.icons)).toHaveAttribute("aria-pressed", "true");
     });
 
+    test("opening the modal halts a running program and STOP stays clickable above it", async ({
+      page,
+    }) => {
+      await dragUnderStack(page, l.forward);
+      await page.getByRole("button", { name: l.run }).click();
+      await expect.poll(() => moving(page), { timeout: 10_000 }).toBe(true);
+      await page.getByRole("button", { name: l.advanced, exact: true }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect.poll(() => moving(page), { timeout: 2_000 }).toBe(false);
+      // Playwright only clicks what is really hit: the backdrop must not cover STOP
+      await page.getByRole("button", { name: l.stop }).click();
+      await expect(page.getByRole("dialog")).toBeVisible(); // STOP does not dismiss the question
+    });
+
     test("Escape closes the modal as Cancel", async ({ page }) => {
       await page.getByRole("button", { name: l.advanced, exact: true }).click();
       await expect(page.getByRole("dialog")).toBeVisible();

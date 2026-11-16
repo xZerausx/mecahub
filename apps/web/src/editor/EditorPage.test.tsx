@@ -154,18 +154,18 @@ describe("EditorPage", () => {
     expect(document.activeElement).toBe(level);
   });
 
-  it("changing the level while a program runs leaves the run alone and STOP still works", () => {
+  it("changing the level halts a running program first and STOP still works", () => {
     const controller = fakeController({ ...idle, running: true });
     mount(controller);
     act(() => button(en["editor.level.advanced"])?.click());
     act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
     expect(controller.run).not.toHaveBeenCalled();
     expect(controller.dispose).not.toHaveBeenCalled();
-    expect(controller.stop).not.toHaveBeenCalled();
+    expect(controller.stop).toHaveBeenCalledTimes(1); // the level request itself
     const stop = button(en["editor.stop"]);
     expect(stop?.disabled).toBe(false);
     act(() => stop?.click());
-    expect(controller.stop).toHaveBeenCalledTimes(1);
+    expect(controller.stop).toHaveBeenCalledTimes(2);
   });
 
   describe("switching to the Advanced level asks first", () => {
@@ -216,17 +216,48 @@ describe("EditorPage", () => {
       expect(pressed(en["editor.level.icons"])).toBe("true");
     });
 
-    it("traps the focus inside the modal with Tab and Shift+Tab", () => {
+    it("traps the focus in Cancel, Confirm and STOP with Tab and Shift+Tab", () => {
       mount(fakeController());
       act(() => button(en["editor.level.advanced"])?.click());
       const cancel = button(en["editor.confirmAdvanced.cancel"]);
       const confirm = button(en["editor.confirmAdvanced.confirm"]);
-      key("Tab"); // from Cancel: the browser would go to Confirm; from Confirm it must wrap
+      const stop = button(en["editor.stop"]);
       act(() => confirm?.focus());
-      key("Tab");
+      key("Tab"); // Confirm -> STOP (it stays reachable above the backdrop)
+      expect(document.activeElement).toBe(stop);
+      key("Tab"); // STOP -> wraps to Cancel
       expect(document.activeElement).toBe(cancel);
+      key("Tab", { shiftKey: true }); // Cancel -> back to STOP
+      expect(document.activeElement).toBe(stop);
       key("Tab", { shiftKey: true });
       expect(document.activeElement).toBe(confirm);
+    });
+
+    it("halts the robot as soon as the modal opens, and STOP stays usable behind it", () => {
+      const controller = fakeController({ ...idle, running: true });
+      mount(controller);
+      act(() => button(en["editor.level.advanced"])?.click());
+      expect(controller.stop).toHaveBeenCalledTimes(1);
+      // the bar is raised above the backdrop (editor.css: .confirming .big-button.stop)
+      expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(true);
+      const stop = button(en["editor.stop"]);
+      expect(stop?.disabled).toBe(false);
+      act(() => stop?.click());
+      expect(controller.stop).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives the focus back to the level toggle however the modal closes", () => {
+      const advanced = () => button(en["editor.level.advanced"]);
+      mount(fakeController());
+      act(() => advanced()?.click());
+      act(() => button(en["editor.confirmAdvanced.cancel"])?.click());
+      expect(document.activeElement).toBe(advanced());
+      act(() => advanced()?.click());
+      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+      expect(document.activeElement).toBe(advanced());
+      act(() => advanced()?.click());
+      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
+      expect(document.activeElement).toBe(advanced());
     });
 
     it("Escape closes it as Cancel and is also a STOP", () => {
@@ -236,7 +267,7 @@ describe("EditorPage", () => {
       act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
       expect(dialog()).toBeNull();
       expect(pressed(en["editor.level.icons"])).toBe("true");
-      expect(controller.stop).toHaveBeenCalledTimes(1);
+      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
     });
 
     it("Escape still stops a running program while the modal is open", () => {
@@ -245,7 +276,7 @@ describe("EditorPage", () => {
       act(() => button(en["editor.level.advanced"])?.click());
       expect(dialog()).not.toBeNull();
       act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(controller.stop).toHaveBeenCalledTimes(1);
+      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
       expect(dialog()).toBeNull();
     });
   });
