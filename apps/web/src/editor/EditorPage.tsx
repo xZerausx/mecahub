@@ -3,6 +3,8 @@ import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore }
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
 import { STOP_BUDGET_MS, type EditorController } from "./editor-controller.js";
+import { HubButton } from "./HubButton.js";
+import { ProblemBadge } from "./ProblemBadge.js";
 import { SimPreview } from "./SimPreview.js";
 import "./editor.css";
 
@@ -171,8 +173,22 @@ export function EditorPage({ controller, locale, t }: Props) {
             </span>
           ))}
         </div>
-        {/* The controller only drives the simulator today; "hub" arrives with the real-hub connection. */}
-        <SimPreview source="simulator" snapshot={snapshot} t={t} />
+        <HubButton
+          source={snapshot.source}
+          connection={snapshot.connection}
+          available={controller.hubAvailable}
+          // Straight from the click: the Bluetooth chooser needs the user gesture.
+          onUseHub={() => void controller.useHub()}
+          onUseSimulator={() => void controller.useSimulator()}
+          t={t}
+        />
+        <SimPreview source={snapshot.source} snapshot={snapshot} t={t}>
+          <ProblemBadge
+            problem={snapshot.problem}
+            onDismiss={() => controller.dismissProblem()}
+            t={t}
+          />
+        </SimPreview>
       </header>
       <BlocklyWorkspace
         level={level}

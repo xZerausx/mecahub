@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { EditorSnapshot, LedName, WheelState } from "./editor-controller.js";
 import type { Translate } from "../i18n.js";
 
@@ -20,13 +21,16 @@ const ARROW: Record<WheelState, string> = {
   stopped: "",
   forward: "M20 34V10M10 20L20 8L30 20",
   backward: "M20 6V30M10 22L20 34L30 22",
+  unknown: "",
 };
 
 function Wheel({ state, label, side }: { state: WheelState; label: string; side: "a" | "b" }) {
   return (
     <svg className={`wheel wheel-${side}`} viewBox="0 0 40 44" role="img" aria-label={label}>
       <rect x="4" y="2" width="32" height="40" rx="9" className="wheel-body" />
-      {state !== "stopped" && <path d={ARROW[state]} className={`wheel-arrow ${state}`} />}
+      {(state === "forward" || state === "backward") && (
+        <path d={ARROW[state]} className={`wheel-arrow ${state}`} />
+      )}
     </svg>
   );
 }
@@ -41,10 +45,13 @@ export function SimPreview({
   snapshot,
   t,
   source,
+  children,
 }: {
   snapshot: EditorSnapshot;
   t: Translate;
   source: PreviewSource;
+  /** Overlays that belong to the preview (the problem badge). */
+  children?: ReactNode;
 }) {
   return (
     <div
@@ -55,6 +62,8 @@ export function SimPreview({
       data-wheel-a={snapshot.wheels.a}
       data-wheel-b={snapshot.wheels.b}
       data-source={source}
+      // The hub link dropped: what is drawn is the last thing we told it, no longer what it does.
+      data-stale={snapshot.connection === "dropped" ? "" : undefined}
     >
       <span className="sim-source">{t(`editor.source.${source}`)}</span>
       <div className="sim-robot">
@@ -79,6 +88,7 @@ export function SimPreview({
           label={`${t("editor.wheelB")}: ${t(`editor.state.${snapshot.wheels.b}`)}`}
         />
       </div>
+      {children}
     </div>
   );
 }

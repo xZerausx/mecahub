@@ -22,7 +22,9 @@ const clickLevel = (label: string): Promise<void> =>
 
 const idle: EditorSnapshot = {
   running: false,
+  source: "simulator",
   connection: "connected",
+  problem: undefined,
   wheels: { a: "stopped", b: "stopped" },
   led: "off",
   highlightedBlockId: undefined,
@@ -43,6 +45,10 @@ function fakeController(initial: EditorSnapshot = idle) {
       return () => void listeners.delete(l);
     },
     connect: vi.fn(() => Promise.resolve()),
+    hubAvailable: true,
+    useHub: vi.fn(() => Promise.resolve()),
+    useSimulator: vi.fn(() => Promise.resolve()),
+    dismissProblem: vi.fn(),
     run: vi.fn(() => Promise.resolve("completed" as const)),
     stop: vi.fn(),
     stopSettled: vi.fn(() => Promise.resolve()),
@@ -366,5 +372,66 @@ describe("EditorPage", () => {
       );
       expect(new Set(ids).size).toBe(2);
     });
+  });
+});
+
+describe("EditorPage and the real hub", () => {
+  it("the Bluetooth button calls useHub straight from the click (the user gesture)", () => {
+    const controller = fakeController();
+    mount(controller);
+    act(() => button(en["editor.hub.connect"])?.click());
+    expect(controller.useHub).toHaveBeenCalledTimes(1);
+  });
+
+  it("on the hub the same button goes back to the simulator", () => {
+    const controller = fakeController({ ...idle, source: "hub" });
+    mount(controller);
+    act(() => button(en["editor.hub.disconnect"])?.click());
+    expect(controller.useSimulator).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels the preview Hub when the hub is the source, dimmed when the link dropped", () => {
+    mount(fakeController({ ...idle, source: "hub", connection: "dropped" }));
+    const preview = host.querySelector(".sim-preview");
+    expect(preview?.getAttribute("data-source")).toBe("hub");
+    expect(preview?.getAttribute("data-stale")).not.toBeNull();
+    expect(preview?.querySelector(".sim-source")?.textContent).toBe(en["editor.source.hub"]);
+  });
+
+  it("is disabled with an explanation where the browser has no Bluetooth", () => {
+    const controller = fakeController();
+    (controller as { hubAvailable: boolean }).hubAvailable = false;
+    mount(controller);
+    const connect = button(en["editor.hub.connect"]);
+    expect(connect?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.querySelector(`#${connect?.getAttribute("aria-describedby")}`)?.textContent).toBe(
+      en["editor.hub.unsupported"],
+    );
+  });
+
+  it("shows a problem inside the preview group and tapping it dismisses it", () => {
+    const controller = fakeController({ ...idle, problem: "link-lost" });
+    mount(controller);
+    const badge = host.querySelector(".sim-preview .problem-badge");
+    expect(badge).not.toBeNull();
+    act(() => (badge as HTMLButtonElement).click());
+    expect(controller.dismissProblem).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SimPreview staleness", () => {
+  it("is not stale on a live link", () => {
+    mount(fakeController());
+    expect(host.querySelector(".sim-preview")?.getAttribute("data-stale")).toBeNull();
+  });
+
+  it("draws unknown wheels without an arrow", () => {
+    mount(fakeController({ ...idle, wheels: { a: "unknown", b: "unknown" } }));
+    const preview = host.querySelector(".sim-preview");
+    expect(preview?.getAttribute("data-wheel-a")).toBe("unknown");
+    expect(preview?.querySelector(".wheel-arrow")).toBeNull();
+    expect(
+      preview?.querySelector(`svg[aria-label$="${en["editor.state.unknown"]}"]`),
+    ).not.toBeNull();
   });
 });

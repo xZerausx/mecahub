@@ -2,3 +2,4 @@
 // BleTransport implementation (fake, web, simulator, native) run the same contract suite.
 export { describeTransportContract } from "./contract.js";
 export type { ContractHarness } from "./contract.js";
+export * from "./fake-bluetooth.js";
