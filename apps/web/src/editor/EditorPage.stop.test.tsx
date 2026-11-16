@@ -9,11 +9,11 @@ import { STOP_BUDGET_MS, createEditorController } from "./editor-controller.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// Mandatory (CLAUDE.md): STOP < 200 ms, always. Opening the "switch level" modal is a stop too,
-// because the modal's backdrop must never leave a running robot without a reachable STOP.
+// Mandatory (CLAUDE.md): STOP < 200 ms, always. Switching level is a stop too: a change of
+// level must never leave a running robot behind.
 afterEach(() => vi.useRealTimers());
 
-describe("opening the level modal while a program runs", () => {
+describe("switching level while a program runs", () => {
   it("halts every motor within STOP_BUDGET_MS", async () => {
     vi.useFakeTimers();
     const controller = createEditorController({ simWriteLatencyMs: 30 });

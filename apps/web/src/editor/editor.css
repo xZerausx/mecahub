@@ -51,7 +51,7 @@
   background: var(--go);
 }
 /* STOP is always the top layer: above Blockly's widget, dropdown and tooltip divs (z-index up to
-   100000 in 13.4.0; stop-layer.test.ts checks it) and above the modal backdrop. */
+   100000 in 13.4.0; stop-layer.test.ts checks it). */
 .big-button.stop {
   position: relative;
   z-index: 100001;
@@ -177,47 +177,4 @@
 
 body {
   margin: 0;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(43, 29, 20, 0.55);
-}
-.modal {
-  display: grid;
-  justify-items: center;
-  gap: 18px;
-  max-width: min(90vw, 440px);
-  padding: 28px 32px 32px;
-  border: 6px solid var(--ink);
-  border-radius: 28px;
-  background: var(--paper);
-  box-shadow: 0 10px 0 var(--ink);
-}
-.modal-icon {
-  width: 72px;
-  height: 72px;
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 4;
-  stroke-linecap: round;
-}
-.modal-title {
-  margin: 0;
-  font-size: 1.6rem;
-  text-align: center;
-}
-.modal-actions {
-  display: flex;
-  gap: 28px;
-}
-.big-button.cancel {
-  background: var(--halt);
-}
-.big-button.confirm {
-  background: var(--go);
 }

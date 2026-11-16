@@ -24,10 +24,9 @@ describe("STOP layer", () => {
     expect(z).toBeGreaterThan(blocklyMax);
   });
 
-  it("keeps the modal backdrop below STOP", () => {
-    const backdrop = ours.match(/\.modal-backdrop\s*\{[^}]*\}/)?.[0] ?? "";
-    const z = zIndexes(backdrop)[0] ?? Infinity;
+  it("leaves no overlay of ours at or above STOP", () => {
     const stop = zIndexes(ours.match(/\.big-button\.stop\s*\{[^}]*\}/)?.[0] ?? "")[0] ?? 0;
-    expect(z).toBeLessThan(stop);
+    const others = zIndexes(ours.replace(/\.big-button\.stop\s*\{[^}]*\}/, ""));
+    for (const z of others) expect(z).toBeLessThan(stop);
   });
 });

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
 import type { EditorController } from "./editor-controller.js";
-import { LevelConfirmModal } from "./LevelConfirmModal.js";
 import { SimPreview } from "./SimPreview.js";
 import "./editor.css";
 
@@ -24,19 +23,6 @@ const LEVELS: readonly Level[] = ["icons", "advanced"];
 export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
-  const [confirming, setConfirming] = useState(false);
-  const advancedButton = useRef<HTMLButtonElement>(null);
-
-  const confirmingRef = useRef(false);
-  useEffect(() => {
-    confirmingRef.current = confirming;
-  }, [confirming]);
-
-  /** Closes the modal and gives the focus back to the level toggle that opened it. */
-  const closeModal = useCallback(() => {
-    setConfirming(false);
-    advancedButton.current?.focus();
-  }, []);
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -61,13 +47,12 @@ export function EditorPage({ controller, locale, t }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        controller.stop(); // STOP has priority: Esc is never swallowed by the modal
-        if (confirmingRef.current) closeModal(); // with the modal open it also means Cancel
+        controller.stop(); // a pure STOP: it never changes the level or anything else
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [controller, closeModal]);
+  }, [controller]);
 
   const run = () => {
     const state = api.current?.save();
@@ -75,7 +60,7 @@ export function EditorPage({ controller, locale, t }: Props) {
   };
 
   return (
-    <main className={confirming ? "editor confirming" : "editor"} data-level={level}>
+    <main className="editor" data-level={level}>
       <header className="editor-bar">
         <button
           type="button"
@@ -108,17 +93,13 @@ export function EditorPage({ controller, locale, t }: Props) {
               className={`level-button level-${value}`}
               aria-label={t(`editor.level.${value}`)}
               aria-pressed={level === value}
-              ref={value === "advanced" ? advancedButton : undefined}
               onClick={() => {
                 if (value === level) return;
-                // Icons -> Advanced asks first; going back to Icons does not.
-                if (value === "advanced") {
-                  // A change of level halts the robot first, so the question never waits on a
-                  // running program.
-                  controller.stop();
-                  api.current?.hideChaff(); // an open dropdown must not hide behind the question
-                  setConfirming(true);
-                } else setLevel(value);
+                // Any change of level (both directions) halts the robot first and closes any open
+                // Blockly dropdown; the program carries over.
+                controller.stop();
+                api.current?.hideChaff();
+                setLevel(value);
               }}
             >
               <svg viewBox="0 0 48 48" aria-hidden="true">
@@ -138,17 +119,6 @@ export function EditorPage({ controller, locale, t }: Props) {
         </div>
         <SimPreview snapshot={snapshot} t={t} />
       </header>
-      {confirming && (
-        <LevelConfirmModal
-          t={t}
-          stopButton={stopButton}
-          onCancel={closeModal}
-          onConfirm={() => {
-            setLevel("advanced");
-            closeModal();
-          }}
-        />
-      )}
       <BlocklyWorkspace
         level={level}
         locale={locale}

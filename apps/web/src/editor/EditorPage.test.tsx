@@ -105,7 +105,7 @@ describe("EditorPage", () => {
     expect(controller.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("Escape without the modal does not move the keyboard focus", () => {
+  it("Escape does not move the keyboard focus", () => {
     mount(fakeController());
     const run = button(en["editor.run"]);
     act(() => run?.focus());
@@ -134,7 +134,6 @@ describe("EditorPage", () => {
     const controller = fakeController();
     mount(controller);
     act(() => button(en["editor.level.advanced"])?.click());
-    act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
     expect(button(en["editor.level.advanced"])?.getAttribute("aria-pressed")).toBe("true");
     expect(host.querySelectorAll(".blocklySvg")).toHaveLength(1);
     act(() => button(en["editor.run"])?.click());
@@ -167,7 +166,6 @@ describe("EditorPage", () => {
     const controller = fakeController({ ...idle, running: true });
     mount(controller);
     act(() => button(en["editor.level.advanced"])?.click());
-    act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
     expect(controller.run).not.toHaveBeenCalled();
     expect(controller.dispose).not.toHaveBeenCalled();
     expect(controller.stop).toHaveBeenCalledTimes(1); // the level request itself
@@ -177,124 +175,60 @@ describe("EditorPage", () => {
     expect(controller.stop).toHaveBeenCalledTimes(2);
   });
 
-  describe("switching to the Advanced level asks first", () => {
-    const dialog = () => host.querySelector<HTMLElement>('[role="dialog"]');
+  describe("switching level", () => {
     const pressed = (label: string) => button(label)?.getAttribute("aria-pressed");
-    const key = (k: string, init: KeyboardEventInit = {}) =>
-      act(
-        () =>
-          void document.activeElement?.dispatchEvent(
-            new KeyboardEvent("keydown", { key: k, bubbles: true, ...init }),
-          ),
-      );
 
-    it("opens an accessible modal with the question, and changes nothing yet", () => {
+    it("has no confirmation dialog: Advanced switches at once", () => {
       mount(fakeController());
       act(() => button(en["editor.level.advanced"])?.click());
-      const d = dialog();
-      expect(d?.getAttribute("aria-modal")).toBe("true");
-      const title = host.querySelector(`#${d?.getAttribute("aria-labelledby")}`);
-      expect(title?.textContent).toBe(en["editor.confirmAdvanced.title"]);
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-      expect(pressed(en["editor.level.advanced"])).toBe("false");
-    });
-
-    it("focuses Cancel by default, and Cancel stays on Icons", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      expect(document.activeElement).toBe(button(en["editor.confirmAdvanced.cancel"]));
-      act(() => button(en["editor.confirmAdvanced.cancel"])?.click());
-      expect(dialog()).toBeNull();
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-    });
-
-    it("Confirm switches to Advanced", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      expect(dialog()).toBeNull();
+      expect(host.querySelector('[role="dialog"]')).toBeNull();
+      expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(false);
       expect(pressed(en["editor.level.advanced"])).toBe("true");
+      expect(pressed(en["editor.level.icons"])).toBe("false");
     });
 
-    it("going back to Icons needs no confirmation", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      act(() => button(en["editor.level.icons"])?.click());
-      expect(dialog()).toBeNull();
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-    });
-
-    it("traps the focus in Cancel, Confirm and STOP with Tab and Shift+Tab", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      const cancel = button(en["editor.confirmAdvanced.cancel"]);
-      const confirm = button(en["editor.confirmAdvanced.confirm"]);
-      const stop = button(en["editor.stop"]);
-      act(() => confirm?.focus());
-      key("Tab"); // Confirm -> STOP (it stays reachable above the backdrop)
-      expect(document.activeElement).toBe(stop);
-      key("Tab"); // STOP -> wraps to Cancel
-      expect(document.activeElement).toBe(cancel);
-      key("Tab", { shiftKey: true }); // Cancel -> back to STOP
-      expect(document.activeElement).toBe(stop);
-      key("Tab", { shiftKey: true });
-      expect(document.activeElement).toBe(confirm);
-    });
-
-    it("closes any open Blockly widget (dropdown, tooltip) when the modal opens", () => {
+    it("stops the controller and closes Blockly widgets on every change, both directions", () => {
       const spy = vi.spyOn(Blockly.WorkspaceSvg.prototype, "hideChaff");
-      mount(fakeController());
+      const controller = fakeController();
+      mount(controller);
+      spy.mockClear(); // Blockly itself calls hideChaff while injecting
       act(() => button(en["editor.level.advanced"])?.click());
+      expect(controller.stop).toHaveBeenCalledTimes(1);
       expect(spy).toHaveBeenCalled();
+      spy.mockClear();
+      act(() => button(en["editor.level.icons"])?.click());
+      expect(controller.stop).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenCalled();
+      expect(pressed(en["editor.level.icons"])).toBe("true");
       spy.mockRestore();
     });
 
-    it("halts the robot as soon as the modal opens, and STOP stays usable behind it", () => {
-      const controller = fakeController({ ...idle, running: true });
+    it("clicking the level already active does nothing", () => {
+      const controller = fakeController();
+      mount(controller);
+      act(() => button(en["editor.level.icons"])?.click());
+      expect(controller.stop).not.toHaveBeenCalled();
+    });
+
+    it("keeps the program across both directions", () => {
+      const controller = fakeController();
       mount(controller);
       act(() => button(en["editor.level.advanced"])?.click());
-      expect(controller.stop).toHaveBeenCalledTimes(1);
-      // the bar is raised above the backdrop (editor.css: .confirming .big-button.stop)
-      expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(true);
-      const stop = button(en["editor.stop"]);
-      expect(stop?.disabled).toBe(false);
-      act(() => stop?.click());
-      expect(controller.stop).toHaveBeenCalledTimes(2);
+      act(() => button(en["editor.level.icons"])?.click());
+      act(() => button(en["editor.run"])?.click());
+      const state = (controller.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        blocks: { blocks: { type: string }[] };
+      };
+      expect(state.blocks.blocks.map((b) => b.type)).toEqual(["mh_icon_when_start"]);
     });
 
-    it("gives the focus back to the level toggle however the modal closes", () => {
-      const advanced = () => button(en["editor.level.advanced"]);
-      mount(fakeController());
-      act(() => advanced()?.click());
-      act(() => button(en["editor.confirmAdvanced.cancel"])?.click());
-      expect(document.activeElement).toBe(advanced());
-      act(() => advanced()?.click());
-      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(document.activeElement).toBe(advanced());
-      act(() => advanced()?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      expect(document.activeElement).toBe(advanced());
-    });
-
-    it("Escape closes it as Cancel and is also a STOP", () => {
+    it("Escape is a pure STOP: it does not change the level", () => {
       const controller = fakeController();
       mount(controller);
       act(() => button(en["editor.level.advanced"])?.click());
       act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(dialog()).toBeNull();
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
-    });
-
-    it("Escape still stops a running program while the modal is open", () => {
-      const controller = fakeController({ ...idle, running: true });
-      mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
-      expect(dialog()).not.toBeNull();
-      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
-      expect(dialog()).toBeNull();
+      expect(controller.stop).toHaveBeenCalledTimes(2); // the level change, then Esc
+      expect(pressed(en["editor.level.advanced"])).toBe("true");
     });
   });
 
