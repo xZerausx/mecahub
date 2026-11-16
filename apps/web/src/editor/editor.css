@@ -1,0 +1,176 @@
+/* Toy workbench: warm paper, chunky ink outlines, buttons that press down. Local fonts only: the
+   app makes no network requests. */
+.editor {
+  --ink: #2b1d14;
+  --paper: #f6e8c8;
+  --paper-deep: #ecd6a3;
+  --go: #2fa84f;
+  --halt: #e4372c;
+  --sun: #ffd23f;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100dvh;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(rgba(43, 29, 20, 0.09) 1.2px, transparent 1.4px);
+  background-size: 18px 18px;
+  font-family: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+}
+
+.editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px 16px;
+  border-bottom: 5px solid var(--ink);
+  background: var(--sun);
+}
+
+.big-button {
+  width: 76px;
+  height: 76px;
+  padding: 10px;
+  border: 5px solid var(--ink);
+  border-radius: 22px;
+  cursor: pointer;
+  box-shadow: 0 7px 0 var(--ink);
+  transition:
+    transform 80ms ease,
+    box-shadow 80ms ease;
+}
+.big-button svg {
+  width: 100%;
+  height: 100%;
+  fill: #fff;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+.big-button.run {
+  background: var(--go);
+}
+.big-button.stop {
+  background: var(--halt);
+}
+.big-button:active:not(:disabled) {
+  transform: translateY(6px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+.big-button:disabled {
+  opacity: 0.55;
+  transform: translateY(4px);
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: default;
+}
+.big-button:focus-visible,
+.level-button:focus-visible {
+  outline: 5px solid #fff;
+  outline-offset: 3px;
+}
+
+.level-toggle {
+  display: flex;
+  margin-left: auto;
+  border: 5px solid var(--ink);
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.level-button {
+  width: 60px;
+  height: 56px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.level-button + .level-button {
+  border-left: 5px solid var(--ink);
+}
+.level-button svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.level-button[aria-pressed="true"] {
+  background: var(--ink);
+}
+.level-button[aria-pressed="true"] svg {
+  stroke: var(--sun);
+  fill: var(--sun);
+}
+.level-advanced[aria-pressed="true"] svg {
+  fill: none;
+}
+
+.sim-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 5px solid var(--ink);
+  border-radius: 20px;
+  background: var(--paper);
+}
+.sim-preview .wheel {
+  width: 34px;
+  height: 46px;
+}
+.sim-preview .hub {
+  width: 56px;
+  height: 56px;
+}
+.wheel-body {
+  fill: #6b5846;
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+.wheel-arrow {
+  fill: none;
+  stroke: var(--sun);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hub-body {
+  fill: #fff4d6;
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+.hub-led {
+  stroke: var(--ink);
+  stroke-width: 4;
+  transition: fill 120ms ease;
+}
+
+.editor-workspace {
+  min-height: 0;
+  position: relative;
+}
+.editor-workspace .blocklySvg {
+  background: transparent;
+}
+.editor-workspace .blocklyFlyoutBackground {
+  fill: var(--paper-deep);
+  fill-opacity: 1;
+}
+.editor-workspace .blocklyMainBackground {
+  stroke: none;
+}
+.editor-workspace .mh-block-error {
+  filter: drop-shadow(0 0 0 var(--halt)) drop-shadow(0 0 6px var(--halt));
+}
+@media (prefers-reduced-motion: reduce) {
+  .big-button,
+  .hub-led {
+    transition: none;
+  }
+}
+
+body {
+  margin: 0;
+}
