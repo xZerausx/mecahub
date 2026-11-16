@@ -1,0 +1,106 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "fwd",
+      "trigger": {
+        "type": "tilt",
+        "direction": "forward"
+      },
+      "body": [
+        {
+          "id": "f",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": 60
+          },
+          "speedB": {
+            "type": "number",
+            "value": 60
+          },
+          "ms": {
+            "type": "number",
+            "value": 800
+          }
+        }
+      ]
+    },
+    {
+      "id": "back",
+      "trigger": {
+        "type": "tilt",
+        "direction": "backward"
+      },
+      "body": [
+        {
+          "id": "b",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": -60
+          },
+          "speedB": {
+            "type": "number",
+            "value": -60
+          },
+          "ms": {
+            "type": "number",
+            "value": 800
+          }
+        }
+      ]
+    },
+    {
+      "id": "left",
+      "trigger": {
+        "type": "tilt",
+        "direction": "left"
+      },
+      "body": [
+        {
+          "id": "l",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": -40
+          },
+          "speedB": {
+            "type": "number",
+            "value": 40
+          },
+          "ms": {
+            "type": "number",
+            "value": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "right",
+      "trigger": {
+        "type": "tilt",
+        "direction": "right"
+      },
+      "body": [
+        {
+          "id": "r",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": 40
+          },
+          "speedB": {
+            "type": "number",
+            "value": -40
+          },
+          "ms": {
+            "type": "number",
+            "value": 400
+          }
+        }
+      ]
+    }
+  ]
+}

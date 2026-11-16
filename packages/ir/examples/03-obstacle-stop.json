@@ -1,0 +1,58 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "s",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "go",
+          "type": "driveStart",
+          "speedA": {
+            "type": "number",
+            "value": 50
+          },
+          "speedB": {
+            "type": "number",
+            "value": 50
+          }
+        },
+        {
+          "id": "wt",
+          "type": "waitUntil",
+          "condition": {
+            "type": "compare",
+            "op": "<",
+            "left": {
+              "type": "sensor",
+              "sensor": "distance",
+              "port": "D"
+            },
+            "right": {
+              "type": "number",
+              "value": 3
+            }
+          }
+        },
+        {
+          "id": "stop",
+          "type": "driveStop",
+          "mode": "brake"
+        },
+        {
+          "id": "led",
+          "type": "setLed",
+          "color": "red"
+        },
+        {
+          "id": "snd",
+          "type": "playSound",
+          "sound": "horn"
+        }
+      ]
+    }
+  ]
+}

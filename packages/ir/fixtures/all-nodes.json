@@ -1,0 +1,296 @@
+{
+  "irVersion": 1,
+  "variables": [
+    {
+      "id": "v",
+      "name": "v",
+      "initial": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "t1",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "a1",
+          "type": "motorRunForTime",
+          "port": "A",
+          "speed": {
+            "type": "number",
+            "value": 50
+          },
+          "ms": {
+            "type": "number",
+            "value": 100
+          }
+        },
+        {
+          "id": "a2",
+          "type": "motorRunForDegrees",
+          "port": "B",
+          "speed": {
+            "type": "number",
+            "value": -50
+          },
+          "degrees": {
+            "type": "number",
+            "value": 90
+          }
+        },
+        {
+          "id": "a3",
+          "type": "motorStart",
+          "port": "C",
+          "speed": {
+            "type": "number",
+            "value": 10
+          }
+        },
+        {
+          "id": "a4",
+          "type": "motorStop",
+          "port": "C",
+          "mode": "float"
+        },
+        {
+          "id": "a5",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": 10
+          },
+          "speedB": {
+            "type": "number",
+            "value": 10
+          },
+          "ms": {
+            "type": "number",
+            "value": 10
+          }
+        },
+        {
+          "id": "a6",
+          "type": "driveForDegrees",
+          "speedA": {
+            "type": "number",
+            "value": 10
+          },
+          "speedB": {
+            "type": "number",
+            "value": 10
+          },
+          "degrees": {
+            "type": "number",
+            "value": 10
+          }
+        },
+        {
+          "id": "a7",
+          "type": "driveStart",
+          "speedA": {
+            "type": "number",
+            "value": 0
+          },
+          "speedB": {
+            "type": "number",
+            "value": 0
+          }
+        },
+        {
+          "id": "a8",
+          "type": "driveStop",
+          "mode": "brake"
+        },
+        {
+          "id": "a9",
+          "type": "setLed",
+          "color": "lightBlue"
+        },
+        {
+          "id": "a10",
+          "type": "playSound",
+          "sound": "robot"
+        },
+        {
+          "id": "a11",
+          "type": "wait",
+          "ms": {
+            "type": "number",
+            "value": 10
+          }
+        },
+        {
+          "id": "a12",
+          "type": "waitUntil",
+          "condition": {
+            "type": "boolean",
+            "value": true
+          }
+        },
+        {
+          "id": "a13",
+          "type": "repeat",
+          "times": {
+            "type": "variable",
+            "variable": "v"
+          },
+          "body": [
+            {
+              "id": "r1",
+              "type": "stopScript"
+            }
+          ]
+        },
+        {
+          "id": "a14",
+          "type": "while",
+          "condition": {
+            "type": "logic",
+            "op": "or",
+            "left": {
+              "type": "sensor",
+              "sensor": "button"
+            },
+            "right": {
+              "type": "colorIs",
+              "port": "C",
+              "color": "none"
+            }
+          },
+          "body": []
+        },
+        {
+          "id": "a15",
+          "type": "if",
+          "condition": {
+            "type": "not",
+            "operand": {
+              "type": "boolean",
+              "value": false
+            }
+          },
+          "then": []
+        },
+        {
+          "id": "a16",
+          "type": "setVariable",
+          "variable": "v",
+          "value": {
+            "type": "arithmetic",
+            "op": "+",
+            "left": {
+              "type": "number",
+              "value": 1
+            },
+            "right": {
+              "type": "random",
+              "min": {
+                "type": "number",
+                "value": 1
+              },
+              "max": {
+                "type": "number",
+                "value": 3
+              }
+            }
+          }
+        },
+        {
+          "id": "a17",
+          "type": "changeVariable",
+          "variable": "v",
+          "by": {
+            "type": "sensor",
+            "sensor": "motorPosition",
+            "port": "D"
+          }
+        },
+        {
+          "id": "a18",
+          "type": "if",
+          "condition": {
+            "type": "compare",
+            "op": "!=",
+            "left": {
+              "type": "sensor",
+              "sensor": "tiltX"
+            },
+            "right": {
+              "type": "sensor",
+              "sensor": "tiltY"
+            }
+          },
+          "then": [],
+          "else": [
+            {
+              "id": "e1",
+              "type": "setVariable",
+              "variable": "v",
+              "value": {
+                "type": "sensor",
+                "sensor": "color",
+                "port": "C"
+              }
+            }
+          ]
+        },
+        {
+          "id": "a19",
+          "type": "changeVariable",
+          "variable": "v",
+          "by": {
+            "type": "sensor",
+            "sensor": "distance",
+            "port": "D"
+          }
+        },
+        {
+          "id": "a20",
+          "type": "forever",
+          "body": [
+            {
+              "id": "f1",
+              "type": "stopAll"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "trigger": {
+        "type": "colorSeen",
+        "port": "C",
+        "color": "red"
+      },
+      "body": []
+    },
+    {
+      "id": "t3",
+      "trigger": {
+        "type": "distanceBelow",
+        "port": "D",
+        "value": 3
+      },
+      "body": []
+    },
+    {
+      "id": "t4",
+      "trigger": {
+        "type": "tilt",
+        "direction": "left"
+      },
+      "body": []
+    },
+    {
+      "id": "t5",
+      "trigger": {
+        "type": "buttonPressed"
+      },
+      "body": []
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+export { IR_VERSION } from "./types.js";
+export type {
+  Arithmetic,
+  ArithmeticOp,
+  BooleanExpression,
+  BooleanLiteral,
+  ButtonRead,
+  Color,
+  ColorIs,
+  Compare,
+  CompareOp,
+  Expression,
+  Logic,
+  LogicOp,
+  MotorPort,
+  Not,
+  NumberLiteral,
+  NumericExpression,
+  NumericSensorRead,
+  Program,
+  Random,
+  Script,
+  SensedColor,
+  SensorPort,
+  Sound,
+  Statement,
+  StopMode,
+  TiltDirection,
+  Trigger,
+  Variable,
+  VariableRef,
+} from "./types.js";
+export {
+  ARITHMETIC_OPS,
+  COLORS,
+  COMPARE_OPS,
+  LOGIC_OPS,
+  MOTOR_PORTS,
+  SENSED_COLORS,
+  SENSOR_PORTS,
+  SOUNDS,
+  STOP_MODES,
+  TILT_DIRECTIONS,
+} from "./types.js";
+export { programSchema } from "./schema.js";
+export { validateProgram } from "./validate.js";
+export type { ValidationError, ValidationResult } from "./validate.js";

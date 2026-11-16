@@ -1,0 +1,68 @@
+{
+  "irVersion": 1,
+  "variables": [
+    {
+      "id": "v-count",
+      "name": "count",
+      "initial": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "press",
+      "trigger": {
+        "type": "buttonPressed"
+      },
+      "body": [
+        {
+          "id": "inc",
+          "type": "changeVariable",
+          "variable": "v-count",
+          "by": {
+            "type": "number",
+            "value": 1
+          }
+        },
+        {
+          "id": "chk",
+          "type": "if",
+          "condition": {
+            "type": "compare",
+            "op": ">=",
+            "left": {
+              "type": "variable",
+              "variable": "v-count"
+            },
+            "right": {
+              "type": "number",
+              "value": 3
+            }
+          },
+          "then": [
+            {
+              "id": "done",
+              "type": "playSound",
+              "sound": "cheer"
+            },
+            {
+              "id": "rst",
+              "type": "setVariable",
+              "variable": "v-count",
+              "value": {
+                "type": "number",
+                "value": 0
+              }
+            }
+          ],
+          "else": [
+            {
+              "id": "blip",
+              "type": "playSound",
+              "sound": "beep"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

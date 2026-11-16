@@ -1,0 +1,79 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "drive",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "d",
+          "type": "driveForTime",
+          "speedA": {
+            "type": "number",
+            "value": 50
+          },
+          "speedB": {
+            "type": "number",
+            "value": 50
+          },
+          "ms": {
+            "type": "number",
+            "value": 4000
+          }
+        },
+        {
+          "id": "ds",
+          "type": "driveStop",
+          "mode": "float"
+        }
+      ]
+    },
+    {
+      "id": "blink",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "bl",
+          "type": "repeat",
+          "times": {
+            "type": "number",
+            "value": 8
+          },
+          "body": [
+            {
+              "id": "on",
+              "type": "setLed",
+              "color": "blue"
+            },
+            {
+              "id": "w1",
+              "type": "wait",
+              "ms": {
+                "type": "number",
+                "value": 250
+              }
+            },
+            {
+              "id": "off",
+              "type": "setLed",
+              "color": "black"
+            },
+            {
+              "id": "w2",
+              "type": "wait",
+              "ms": {
+                "type": "number",
+                "value": 250
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
