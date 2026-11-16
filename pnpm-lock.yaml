@@ -198,15 +198,30 @@ importers:
 
   apps/web:
     dependencies:
+      '@mecahub/blocks':
+        specifier: workspace:*
+        version: link:../../packages/blocks
       '@mecahub/hub':
         specifier: workspace:*
         version: link:../../packages/hub
+      '@mecahub/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
       '@mecahub/lwp3':
         specifier: workspace:*
         version: link:../../packages/lwp3
+      '@mecahub/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@mecahub/simulator':
+        specifier: workspace:*
+        version: link:../../packages/simulator
       '@mecahub/transport':
         specifier: workspace:*
         version: link:../../packages/transport
+      blockly:
+        specifier: 13.4.0
+        version: 13.4.0(jsdom@30.1.3)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -214,9 +229,9 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
     devDependencies:
-      '@mecahub/simulator':
-        specifier: workspace:*
-        version: link:../../packages/simulator
+      '@types/jsdom':
+        specifier: 30.0.0
+        version: 30.0.0
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -226,6 +241,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.3.0
         version: 6.3.0(vite@8.3.7(@types/node@26.6.6))
+      jsdom:
+        specifier: 30.1.0
+        version: 30.1.0
       vite:
         specifier: ^8.3.7
         version: 8.3.7(@types/node@26.6.6)
@@ -1554,7 +1572,6 @@ snapshots:
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
       lru-cache: 11.5.3
-    optional: true
 
   '@asamuzakjp/dom-selector@9.2.4':
     dependencies:
@@ -2034,6 +2051,10 @@ snapshots:
     dependencies:
       jsdom: 30.1.0
 
+  blockly@13.4.0(jsdom@30.1.3):
+    dependencies:
+      jsdom: 30.1.3
+
   brace-expansion@5.0.12:
     dependencies:
       balanced-match: 4.0.4
@@ -2086,7 +2107,6 @@ snapshots:
       whatwg-url: 17.3.0
     transitivePeerDependencies:
       - '@noble/hashes'
-    optional: true
 
   debug@4.4.3:
     dependencies:
@@ -2261,7 +2281,6 @@ snapshots:
       '@exodus/bytes': 1.16.0
     transitivePeerDependencies:
       - '@noble/hashes'
-    optional: true
 
   ignore@5.3.2: {}
 
@@ -2330,7 +2349,6 @@ snapshots:
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
-    optional: true
 
   jsesc@3.1.0: {}
 
@@ -2649,7 +2667,6 @@ snapshots:
   w3c-xmlserializer@6.0.0:
     dependencies:
       xml-name-validator: 5.0.0
-    optional: true
 
   webidl-conversions@8.0.1: {}
 
