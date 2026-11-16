@@ -214,6 +214,33 @@ describe("EditorPage", () => {
       spy.mockRestore();
     });
 
+    it("the last click wins when two level changes overlap, each one sending STOP", async () => {
+      const controller = fakeController();
+      mount(controller);
+      await act(async () => {
+        for (const label of [en["editor.level.advanced"], en["editor.level.icons"]]) {
+          [...document.querySelectorAll<HTMLButtonElement>("button")]
+            .find((b) => b.getAttribute("aria-label") === label)
+            ?.click();
+        }
+      });
+      expect(pressed(en["editor.level.icons"])).toBe("true");
+      expect(pressed(en["editor.level.advanced"])).toBe("false");
+      expect(controller.stop).toHaveBeenCalledTimes(2); // Icons -> Advanced, then back to Icons
+    });
+
+    it("a double click on the same level button is one change and one STOP", async () => {
+      const controller = fakeController();
+      mount(controller);
+      await act(async () => {
+        const advanced = button(en["editor.level.advanced"]);
+        advanced?.click();
+        advanced?.click();
+      });
+      expect(pressed(en["editor.level.advanced"])).toBe("true");
+      expect(controller.stop).toHaveBeenCalledTimes(1);
+    });
+
     it("clicking the level already active does nothing", async () => {
       const controller = fakeController();
       mount(controller);

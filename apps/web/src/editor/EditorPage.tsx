@@ -27,6 +27,16 @@ export function EditorPage({ controller, locale, t }: Props) {
   // Esc hides a visible level tooltip (WCAG 1.4.13) until the pointer enters or the focus moves.
   const [tipsDismissed, setTipsDismissed] = useState(false);
   const toggle = useRef<HTMLDivElement>(null);
+  // A level change is deferred until STOP settled (see the click handler): until it lands, `level`
+  // is stale, so the last requested level lives here and the latest click wins.
+  const pending = useRef<{ level: Level; cancel: () => void } | null>(null);
+  useEffect(
+    () => () => {
+      pending.current?.cancel(); // never set state after unmount; clears the cap timer
+      pending.current = null;
+    },
+    [],
+  );
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -112,21 +122,34 @@ export function EditorPage({ controller, locale, t }: Props) {
                 aria-pressed={level === value}
                 aria-describedby={`${tipBase}-${value}`}
                 onClick={() => {
-                  if (value === level) return;
+                  if (value === (pending.current?.level ?? level)) return;
                   // Any change of level (both directions) halts the robot first and closes any open
                   // Blockly dropdown; the program carries over.
+                  pending.current?.cancel(); // the latest click wins
                   controller.stop();
                   api.current?.hideChaff();
                   // Re-injecting Blockly is a long task on this thread. A STOP write still in flight
                   // would miss its deadline and the transport would drop the link, so the level
                   // changes only once the STOP writes settled (capped: a stuck link never freezes it).
+                  let cancelled = false;
                   let timer: ReturnType<typeof setTimeout> | undefined;
                   const capped = new Promise<void>((resolve) => {
                     timer = setTimeout(resolve, STOP_BUDGET_MS);
                   });
-                  void Promise.race([controller.stopSettled(), capped])
-                    .finally(() => clearTimeout(timer))
-                    .then(() => setLevel(value));
+                  const mine = {
+                    level: value,
+                    cancel: () => {
+                      cancelled = true;
+                      clearTimeout(timer);
+                    },
+                  };
+                  pending.current = mine;
+                  void Promise.race([controller.stopSettled(), capped]).then(() => {
+                    clearTimeout(timer);
+                    if (cancelled) return;
+                    pending.current = null;
+                    setLevel(value);
+                  });
                 }}
               >
                 <svg viewBox="0 0 48 48" aria-hidden="true">
