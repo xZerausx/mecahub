@@ -1,9 +1,4 @@
-import {
-  URGENT_DEADLINE_MS,
-  TransportError,
-  type BleDeviceInfo,
-  type BleTransport,
-} from "@mecahub/transport";
+import { TransportError, type BleDeviceInfo, type BleTransport } from "@mecahub/transport";
 import { FakeBluetooth } from "@mecahub/transport/testing";
 import { WebBleTransport } from "@mecahub/transport/web";
 import { SimulatedHub, SimulatorTransport, defaultMoveHubConfig } from "@mecahub/simulator";
