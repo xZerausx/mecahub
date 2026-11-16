@@ -209,6 +209,10 @@
 }
 .editor-workspace .blocklyFlyoutBackground {
   fill: var(--paper-deep);
+}
+/* Icons keeps a solid flyout; Advanced takes its translucency from the theme (flyoutOpacity), which
+   Blockly sets as an attribute, so no rule here may override it. */
+.editor[data-level="icons"] .editor-workspace .blocklyFlyoutBackground {
   fill-opacity: 1;
 }
 .editor-workspace .blocklyMainBackground {
