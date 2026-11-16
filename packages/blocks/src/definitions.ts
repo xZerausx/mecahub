@@ -1,19 +1,22 @@
-import {
-  BLOCK_SPECS,
-  fieldArgs,
-  type Arg,
-  type BlockSpec,
-  type CategoryId,
-  type FieldArg,
-} from "./spec.js";
+import { iconSrc } from "./icons.js";
+import { BLOCK_SPECS, fieldArgs, type Arg, type BlockSpec, type CategoryId } from "./spec.js";
 
 /** The i18n catalog: flat `key -> text` (content/i18n/<locale>.json). */
 export type Messages = Readonly<Record<string, string>>;
 
+/** A dropdown option shown as a picture; `alt` is its accessible name. */
+export type ImageOption = { src: string; width: number; height: number; alt: string };
+
 /** One entry of a Blockly JSON `argsN` list. Plain data: no Blockly runtime is needed to build it. */
 export type ArgJson =
-  | { type: "field_dropdown"; name: string; options: [label: string, value: string][] }
+  | {
+      type: "field_dropdown";
+      name: string;
+      options: [label: string | ImageOption, value: string][];
+    }
   | { type: "field_number"; name: string; value: number }
+  | { type: "field_number"; name: string; value: number; min: number; max: number; precision: 1 }
+  | { type: "field_image"; name: string; src: string; width: number; height: number; alt: string }
   | { type: "field_variable"; name: string; variable: string }
   | { type: "input_value"; name: string; check: "Number" | "Boolean" }
   | { type: "input_statement"; name: string };
@@ -60,14 +63,15 @@ export const BLOCK_STYLES = {
 const key = (type: string, rest: string): string => `blocks.${type}.${rest}`;
 const VARIABLE_DEFAULT = "blocks.variable.default";
 
-const optionValues = (field: FieldArg): readonly string[] =>
+const optionValues = (field: Arg): readonly string[] =>
   field.kind === "enum" ? field.values : field.kind === "boolean" ? ["true", "false"] : [];
 
 /** Every i18n key the catalogue needs; the tests check each exists in every locale. */
 export const messageKeys = (): string[] => [
   VARIABLE_DEFAULT,
   ...BLOCK_SPECS.flatMap((row) => [
-    key(row.type, "message"),
+    // Icon blocks show no text: their `.alt` (and `.option.<v>`) only label the pictures.
+    ...(row.level === "icons" ? [key(row.type, "alt")] : [key(row.type, "message")]),
     key(row.type, "tooltip"),
     ...fieldArgs(row).flatMap((f) => optionValues(f).map((v) => key(row.type, `option.${v}`))),
     ...row.args.flatMap((a) => (a.kind === "statements" ? [key(row.type, `input.${a.name}`)] : [])),
@@ -80,6 +84,10 @@ const text = (messages: Messages, k: string): string => {
   return value;
 };
 
+/** Size, in pixels at scale 1, of the block picture and of a dropdown swatch. */
+const ICON_SIZE = 40;
+const SWATCH_SIZE = 32;
+
 const argJson = (messages: Messages, row: BlockSpec, arg: Arg): ArgJson => {
   switch (arg.kind) {
     case "enum":
@@ -87,7 +95,32 @@ const argJson = (messages: Messages, row: BlockSpec, arg: Arg): ArgJson => {
       return {
         type: "field_dropdown",
         name: arg.name,
-        options: optionValues(arg).map((v) => [text(messages, key(row.type, `option.${v}`)), v]),
+        options: optionValues(arg).map((v) => {
+          const alt = text(messages, key(row.type, `option.${v}`));
+          const icon = arg.kind === "enum" ? arg.icons?.[v] : undefined;
+          return [
+            icon ? { src: iconSrc(icon), width: SWATCH_SIZE, height: SWATCH_SIZE, alt } : alt,
+            v,
+          ];
+        }),
+      };
+    case "icon":
+      return {
+        type: "field_image",
+        name: arg.name,
+        src: iconSrc(arg.icon),
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        alt: text(messages, key(row.type, "alt")),
+      };
+    case "count":
+      return {
+        type: "field_number",
+        name: arg.name,
+        value: arg.initial,
+        min: arg.min,
+        max: arg.max,
+        precision: 1,
       };
     case "number":
       return { type: "field_number", name: arg.name, value: arg.initial };
@@ -101,14 +134,18 @@ const argJson = (messages: Messages, row: BlockSpec, arg: Arg): ArgJson => {
 };
 
 const define = (messages: Messages, row: BlockSpec): BlockJson => {
+  const inline = row.args.filter((a) => a.kind !== "statements");
   const def: BlockJson = {
     type: row.type,
-    message0: text(messages, key(row.type, "message")),
+    // An icon block has no words: its message is only the tokens of its pictures and fields.
+    message0:
+      row.level === "icons"
+        ? inline.map((_, i) => `%${i + 1}`).join(" ")
+        : text(messages, key(row.type, "message")),
     tooltip: text(messages, key(row.type, "tooltip")),
     colour: CATEGORY_COLOURS[row.category],
     inputsInline: true,
   };
-  const inline = row.args.filter((a) => a.kind !== "statements");
   if (inline.length > 0) def.args0 = inline.map((a) => argJson(messages, row, a));
   row.args
     .filter((a) => a.kind === "statements")

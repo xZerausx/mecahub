@@ -9,3 +9,6 @@ export type { ArgJson, BlockJson, Messages } from "./definitions.js";
 export { BLOCK_SPECS, specFor } from "./spec.js";
 export type { BlockSpec, CategoryId } from "./spec.js";
 export { toolbox } from "./toolbox.js";
+export { ICON_NAMES, ICONS, iconSrc } from "./icons.js";
+export type { IconName } from "./icons.js";
+export type { Level } from "./spec.js";

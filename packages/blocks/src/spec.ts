@@ -10,6 +10,7 @@ import {
   STOP_MODES,
   TILT_DIRECTIONS,
 } from "@mecahub/ir";
+import type { IconName } from "./icons.js";
 
 // Single source of truth for the block catalogue. Everything else (Blockly definitions, toolbox,
 // compiler, decompiler) is derived from this table. It holds structure only: every user-visible
@@ -31,10 +32,32 @@ export type Shape = "hat" | "statement" | "terminal" | "number" | "boolean";
 
 /** A field on the block. `key` is the IR property it maps to. */
 export type FieldArg =
-  | { slot: "field"; kind: "enum"; name: string; key: string; values: readonly string[] }
+  | {
+      slot: "field";
+      kind: "enum";
+      name: string;
+      key: string;
+      values: readonly string[];
+      /** Icons level: show each value as this icon (an image dropdown); the i18n text is its alt. */
+      icons?: Readonly<Record<string, IconName>>;
+    }
   | { slot: "field"; kind: "boolean"; name: string; key: string }
   | { slot: "field"; kind: "number"; name: string; key: string; initial: number }
-  | { slot: "field"; kind: "variable"; name: string; key: string };
+  | { slot: "field"; kind: "variable"; name: string; key: string }
+  | {
+      slot: "field";
+      kind: "count";
+      name: string;
+      key: string;
+      initial: number;
+      min: number;
+      max: number;
+      /** The IR key holds the literal `{ type: "number", value: steps * unit }`. */
+      unit: number;
+    };
+
+/** A fixed picture on the block (Blockly `field_image`). It has no IR key. */
+export type IconArg = { slot: "icon"; kind: "icon"; name: string; icon: IconName };
 
 /**
  * An input on the block. `seconds` marks a time input: the block shows seconds, the IR holds
@@ -52,7 +75,7 @@ export type InputArg =
     }
   | { slot: "input"; kind: "statements"; name: string; key: string };
 
-export type Arg = FieldArg | InputArg;
+export type Arg = FieldArg | InputArg | IconArg;
 
 /** Which editor level offers the block. Every level's blocks are always registered with Blockly. */
 export type Level = "icons" | "advanced";
@@ -180,7 +203,121 @@ const MODE = (): FieldArg => choice("MODE", "mode", STOP_MODES);
 const SPEED = (name: string, key: string): InputArg => num(name, key, 50);
 const OP = (values: readonly string[]): FieldArg => choice("OP", "op", values);
 
-export const BLOCK_SPECS: readonly BlockSpec[] = [
+// ---------------------------------------------------------------- icons level constants
+
+/** Fewest and most steps (or seconds) an Icons block takes: one digit, whole numbers (ScratchJr style). */
+export const ICON_MIN_STEPS = 1;
+export const ICON_MAX_STEPS = 9;
+/** Wheel speed of every Icons movement block. Supuesto: a forward step is +A,+B; TODO(hw) check the 17101 build's motor orientation. */
+export const ICON_DRIVE = 50;
+/** Wheel degrees of one forward or backward step: one full wheel turn. */
+export const ICON_STEP_DEGREES = 360;
+/** Wheel degrees of one turn step. Supuesto: left is -A,+B; TODO(hw) calibrate on the 17101 build. */
+export const ICON_TURN_DEGREES = 180;
+
+const lit = (value: number) => ({ type: "number", value });
+const driveFixed = (a: number, b: number) => ({ speedA: lit(a), speedB: lit(b) });
+
+const pic = (name: string, icon: IconName): IconArg => ({
+  slot: "icon",
+  kind: "icon",
+  name,
+  icon,
+});
+const count = (name: string, key: string, unit: number): FieldArg => ({
+  slot: "field",
+  kind: "count",
+  name,
+  key,
+  initial: ICON_MIN_STEPS,
+  min: ICON_MIN_STEPS,
+  max: ICON_MAX_STEPS,
+  unit,
+});
+const swatches: Readonly<Record<string, IconName>> = {
+  green: "swatch_green",
+  red: "swatch_red",
+  blue: "swatch_blue",
+  yellow: "swatch_yellow",
+  white: "swatch_white",
+  black: "swatch_off",
+};
+const SWATCH_COLORS = Object.keys(swatches);
+
+const iconRow = (
+  type: string,
+  category: CategoryId,
+  shape: Shape,
+  group: "trigger" | "statement",
+  kind: string,
+  args: Arg[],
+  fixed?: Record<string, unknown>,
+): BlockSpec => ({
+  type,
+  level: "icons",
+  category,
+  shape,
+  ir: { group, kind, ...(fixed ? { fixed } : {}) },
+  args,
+});
+
+const ICON_SPECS: readonly BlockSpec[] = [
+  iconRow("mh_icon_when_start", "events", "hat", "trigger", "start", [pic("ICON", "flag")]),
+  iconRow(
+    "mh_icon_forward",
+    "drive",
+    "statement",
+    "statement",
+    "driveForDegrees",
+    [pic("ICON", "forward"), count("STEPS", "degrees", ICON_STEP_DEGREES)],
+    driveFixed(ICON_DRIVE, ICON_DRIVE),
+  ),
+  iconRow(
+    "mh_icon_backward",
+    "drive",
+    "statement",
+    "statement",
+    "driveForDegrees",
+    [pic("ICON", "backward"), count("STEPS", "degrees", ICON_STEP_DEGREES)],
+    driveFixed(-ICON_DRIVE, -ICON_DRIVE),
+  ),
+  iconRow(
+    "mh_icon_turn_left",
+    "drive",
+    "statement",
+    "statement",
+    "driveForDegrees",
+    [pic("ICON", "turn_left"), count("STEPS", "degrees", ICON_TURN_DEGREES)],
+    driveFixed(-ICON_DRIVE, ICON_DRIVE),
+  ),
+  iconRow(
+    "mh_icon_turn_right",
+    "drive",
+    "statement",
+    "statement",
+    "driveForDegrees",
+    [pic("ICON", "turn_right"), count("STEPS", "degrees", ICON_TURN_DEGREES)],
+    driveFixed(ICON_DRIVE, -ICON_DRIVE),
+  ),
+  iconRow("mh_icon_led", "lightSound", "statement", "statement", "setLed", [
+    pic("ICON", "bulb"),
+    {
+      slot: "field",
+      kind: "enum",
+      name: "COLOR",
+      key: "color",
+      values: SWATCH_COLORS,
+      icons: swatches,
+    },
+  ]),
+  iconRow("mh_icon_wait", "control", "statement", "statement", "wait", [
+    pic("ICON", "hourglass"),
+    count("SECONDS", "ms", 1000),
+  ]),
+  iconRow("mh_icon_stop", "control", "terminal", "statement", "stopAll", [pic("ICON", "stop")]),
+];
+
+const ADVANCED_SPECS: readonly BlockSpec[] = [
   // hats
   hat("mh_when_start", "start"),
   hat("mh_when_color_seen", "colorSeen", [SENSOR_PORT(), choice("COLOR", "color", SENSED_COLORS)]),
@@ -285,6 +422,8 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
   ]),
   expr("mh_not", "logic", "boolean", "not", [bool("OPERAND", "operand")]),
 ];
+
+export const BLOCK_SPECS: readonly BlockSpec[] = [...ADVANCED_SPECS, ...ICON_SPECS];
 
 const BY_TYPE = new Map(BLOCK_SPECS.map((spec) => [spec.type, spec]));
 /** The row for a Blockly block type, or undefined for a type this package does not define. */

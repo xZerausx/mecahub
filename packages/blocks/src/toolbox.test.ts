@@ -7,6 +7,8 @@ import { BLOCK_SPECS, inputArgs, specFor } from "./spec.js";
 type Entry = { kind: string; type?: string; inputs?: Record<string, unknown> };
 type Category = { kind: string; name: string; colour: string; contents: Entry[] };
 
+const ADVANCED = BLOCK_SPECS.filter((b) => b.level === "advanced");
+
 const categories = (messages: Record<string, string>): Category[] => {
   const result = toolbox(messages);
   expect(result.kind).toBe("categoryToolbox");
@@ -19,7 +21,7 @@ describe("toolbox", () => {
 
   it("offers every block of the spec exactly once", () => {
     const types = blocksOf(cats).map((b) => b.type);
-    expect(types.sort()).toEqual(BLOCK_SPECS.map((b) => b.type).sort());
+    expect(types.sort()).toEqual(ADVANCED.map((b) => b.type).sort());
   });
 
   it("groups blocks by the category in the spec, in a fixed order", () => {
@@ -34,7 +36,7 @@ describe("toolbox", () => {
   });
 
   it("gives every Number value input an mh_number shadow with its default", () => {
-    for (const spec of BLOCK_SPECS) {
+    for (const spec of ADVANCED) {
       const entry = blocksOf(cats).find((b) => b.type === spec.type);
       const numeric = inputArgs(spec).filter((i) => i.kind === "value" && i.check === "Number");
       for (const input of numeric) {
@@ -63,6 +65,17 @@ describe("toolbox", () => {
       expect(entry.kind).toBe("block");
       expect(specFor(entry.type ?? "")?.level).toBe("icons");
     }
+  });
+
+  it("offers every icon block once in the icons flyout, with no shadows and no names", () => {
+    const flyout = toolbox(en, "icons");
+    const entries = (flyout.contents ?? []) as unknown as Entry[];
+    expect(entries.map((e) => e.type)).toEqual(
+      BLOCK_SPECS.filter((b) => b.level === "icons").map((b) => b.type),
+    );
+    expect(entries.length).toBe(8);
+    expect(JSON.stringify(flyout)).not.toMatch(/"name"|"inputs"|"category"/);
+    expect(toolbox(es, "icons")).toEqual(flyout); // nothing in it depends on the language
   });
 
   it("names every category from the catalog, in both languages", () => {

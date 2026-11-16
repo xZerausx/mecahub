@@ -2,13 +2,7 @@ import type { Program } from "@mecahub/ir";
 import { MAX_DEPTH, MAX_SECONDS } from "./compile.js";
 import { jsonEqual } from "./json.js";
 import type { BlockState, WorkspaceState } from "./serialization.js";
-import {
-  BLOCK_SPECS,
-  type BlockSpec,
-  type FieldArg,
-  type InputArg,
-  type Level,
-} from "./spec.js";
+import { BLOCK_SPECS, type BlockSpec, type FieldArg, type InputArg, type Level } from "./spec.js";
 
 // The inverse of compile.ts, driven by the same spec table. Statement and script ids become block
 // ids; expressions get no id (Blockly assigns one on load). Number literals are written as shadows,
@@ -53,6 +47,15 @@ const fieldAccepts = (arg: FieldArg, value: unknown): boolean => {
       return typeof value === "number";
     case "variable":
       return typeof value === "string";
+    case "count": {
+      const steps = isLiteral(value) ? (value as Node).value : undefined;
+      return (
+        typeof steps === "number" &&
+        Number.isInteger(steps / arg.unit) &&
+        steps / arg.unit >= arg.min &&
+        steps / arg.unit <= arg.max
+      );
+    }
   }
 };
 
@@ -73,7 +76,7 @@ const rowFor = (group: BlockSpec["ir"]["group"], node: Node, level: Level): Bloc
       .filter((k) => k !== "type" && k !== "id" && !fixed.some(([f]) => f === k))
       .filter((k) => node[k] !== undefined)
       .sort();
-    const wanted = row.args.map((a) => a.key).sort();
+    const wanted = row.args.flatMap((a) => (a.slot === "icon" ? [] : [a.key])).sort();
     if (present.join() !== wanted.join()) return false;
     return row.args.every((a) => a.slot !== "field" || fieldAccepts(a, node[a.key]));
   });
@@ -87,7 +90,13 @@ const rowFor = (group: BlockSpec["ir"]["group"], node: Node, level: Level): Bloc
 };
 
 const fieldValue = (arg: FieldArg, value: unknown): unknown =>
-  arg.kind === "boolean" ? String(value) : arg.kind === "variable" ? { id: value } : value;
+  arg.kind === "boolean"
+    ? String(value)
+    : arg.kind === "variable"
+      ? { id: value }
+      : arg.kind === "count"
+        ? ((value as Node).value as number) / arg.unit
+        : value;
 
 /** A time input shows seconds; see compile.ts for the other direction. */
 const toSeconds = (ms: Node): Node =>
@@ -146,6 +155,7 @@ const toBlock = (
   const fields: Record<string, unknown> = {};
   const inputs: NonNullable<BlockState["inputs"]> = {};
   for (const arg of spec.args) {
+    if (arg.slot === "icon") continue;
     const value = node[arg.key];
     if (arg.slot === "field") fields[arg.name] = fieldValue(arg, value);
     else if (arg.kind === "value") inputs[arg.name] = valueInput(arg, value as Node, depth, level);
@@ -201,10 +211,7 @@ const overLimitTimes = (program: Program): DecompileWarning[] => {
  * Never throws: an IR node with no block is `unknown-node` and nesting past compile's `MAX_DEPTH`
  * is `too-deep`. Validate the program first.
  */
-export const decompile = (
-  program: Program,
-  options: { level?: Level } = {},
-): DecompileResult => {
+export const decompile = (program: Program, options: { level?: Level } = {}): DecompileResult => {
   const level = options.level ?? "advanced";
   try {
     const blocks = program.scripts.map((script, i) => {

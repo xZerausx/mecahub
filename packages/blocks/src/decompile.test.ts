@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { compile } from "./compile.js";
 import { decompile as decompileResult } from "./decompile.js";
 import type { BlockState } from "./serialization.js";
-import { BLOCK_SPECS } from "./spec.js";
+import { BLOCK_SPECS, ICON_DRIVE, ICON_TURN_DEGREES } from "./spec.js";
 
 const irDir = (sub: string) => fileURLToPath(new URL(`../../ir/${sub}`, import.meta.url));
 const load = (path: string): Program => {
@@ -177,7 +177,7 @@ describe("decompile: shape of the workspace state", () => {
     for (const { program: p } of [...examples, allNodes]) {
       for (const type of typesIn(decompile(p).blocks.blocks)) seen.add(type);
     }
-    const known = new Set(BLOCK_SPECS.map((b) => b.type));
+    const known = new Set(BLOCK_SPECS.filter((b) => b.level === "advanced").map((b) => b.type));
     expect([...seen].filter((t) => !known.has(t))).toEqual([]);
     expect([...known].filter((t) => !seen.has(t))).toEqual([]);
   });
@@ -372,5 +372,91 @@ describe("decompile: level option", () => {
     for (const type of typesIn(decompile(p).blocks.blocks)) {
       expect(BLOCK_SPECS.find((s) => s.type === type)?.level).toBe("advanced");
     }
+  });
+});
+
+describe("decompile: icons level", () => {
+  const icons = (p: Program) => {
+    const result = decompileResult(p, { level: "icons" });
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    return result.state;
+  };
+  const speeds = (a: number, b: number) => ({ speedA: n(a), speedB: n(b) });
+  const body = [
+    { id: "a", type: "driveForDegrees", ...speeds(ICON_DRIVE, ICON_DRIVE), degrees: n(720) },
+    { id: "b", type: "driveForDegrees", ...speeds(-ICON_DRIVE, -ICON_DRIVE), degrees: n(360) },
+    {
+      id: "c",
+      type: "driveForDegrees",
+      ...speeds(-ICON_DRIVE, ICON_DRIVE),
+      degrees: n(ICON_TURN_DEGREES * 2),
+    },
+    {
+      id: "d",
+      type: "driveForDegrees",
+      ...speeds(ICON_DRIVE, -ICON_DRIVE),
+      degrees: n(ICON_TURN_DEGREES),
+    },
+    { id: "e", type: "setLed", color: "red" },
+    { id: "f", type: "wait", ms: n(3000) },
+    { id: "g", type: "stopAll" },
+  ];
+  const iconProgram = program([{ id: "h", trigger: { type: "start" }, body }]);
+
+  it("uses an icon block wherever one holds the node exactly", () => {
+    expect(typesIn(icons(iconProgram).blocks.blocks).sort()).toEqual(
+      [
+        "mh_icon_when_start",
+        "mh_icon_forward",
+        "mh_icon_backward",
+        "mh_icon_turn_left",
+        "mh_icon_turn_right",
+        "mh_icon_led",
+        "mh_icon_wait",
+        "mh_icon_stop",
+      ].sort(),
+    );
+  });
+
+  it("round-trips through the icon blocks: compile(decompile(p)) equals p", () => {
+    const result = compile(icons(iconProgram));
+    expect(result.ok && result.program).toEqual(iconProgram);
+  });
+
+  it("writes the steps and seconds into the fields", () => {
+    const blocks = icons(iconProgram).blocks.blocks;
+    const forward = blocks[0]?.next?.block;
+    expect(forward?.fields).toEqual({ STEPS: 2 });
+    expect(forward?.next?.block?.fields).toEqual({ STEPS: 1 });
+    const wait = forward?.next?.block?.next?.block?.next?.block?.next?.block?.next?.block;
+    expect(wait?.fields).toEqual({ SECONDS: 3 });
+  });
+
+  it("falls back to Advanced blocks for what the icons cannot hold, and still round-trips", () => {
+    const odd = program([
+      {
+        id: "h",
+        trigger: { type: "start" },
+        body: [
+          { id: "a", type: "driveForDegrees", ...speeds(ICON_DRIVE, ICON_DRIVE), degrees: n(100) },
+          { id: "b", type: "driveForDegrees", ...speeds(ICON_DRIVE, ICON_DRIVE), degrees: n(3600) },
+          { id: "c", type: "wait", ms: n(500) },
+          { id: "d", type: "setLed", color: "pink" },
+          { id: "e", type: "driveForDegrees", ...speeds(30, 30), degrees: n(360) },
+        ],
+      },
+    ]);
+    const state = icons(odd);
+    const types = typesIn(state.blocks.blocks);
+    expect(types.filter((t) => t.startsWith("mh_icon_"))).toEqual(["mh_icon_when_start"]);
+    const back = compile(state);
+    expect(back.ok && back.program).toEqual(odd);
+  });
+
+  it("never uses icon blocks at the advanced level, even for the same program", () => {
+    const types = typesIn(decompile(iconProgram).blocks.blocks);
+    expect(types.some((t) => t.startsWith("mh_icon_"))).toBe(false);
+    const back = compile(decompile(iconProgram));
+    expect(back.ok && back.program).toEqual(iconProgram);
   });
 });
