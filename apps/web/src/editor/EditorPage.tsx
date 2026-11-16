@@ -1,9 +1,8 @@
 import type { Level } from "@mecahub/blocks";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
-import type { EditorController } from "./editor-controller.js";
-import { LevelConfirmModal } from "./LevelConfirmModal.js";
+import { STOP_BUDGET_MS, type EditorController } from "./editor-controller.js";
 import { SimPreview } from "./SimPreview.js";
 import "./editor.css";
 
@@ -24,19 +23,20 @@ const LEVELS: readonly Level[] = ["icons", "advanced"];
 export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
-  const [confirming, setConfirming] = useState(false);
-  const advancedButton = useRef<HTMLButtonElement>(null);
-
-  const confirmingRef = useRef(false);
-  useEffect(() => {
-    confirmingRef.current = confirming;
-  }, [confirming]);
-
-  /** Closes the modal and gives the focus back to the level toggle that opened it. */
-  const closeModal = useCallback(() => {
-    setConfirming(false);
-    advancedButton.current?.focus();
-  }, []);
+  const tipBase = useId();
+  // Esc hides a visible level tooltip (WCAG 1.4.13) until the pointer enters or the focus moves.
+  const [tipsDismissed, setTipsDismissed] = useState(false);
+  const toggle = useRef<HTMLDivElement>(null);
+  // A level change is deferred until STOP settled (see the click handler): until it lands, `level`
+  // is stale, so the last requested level lives here and the latest click wins.
+  const pending = useRef<{ level: Level; cancel: () => void } | null>(null);
+  useEffect(
+    () => () => {
+      pending.current?.cancel(); // never set state after unmount; clears the cap timer
+      pending.current = null;
+    },
+    [],
+  );
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -61,13 +61,13 @@ export function EditorPage({ controller, locale, t }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        controller.stop(); // STOP has priority: Esc is never swallowed by the modal
-        if (confirmingRef.current) closeModal(); // with the modal open it also means Cancel
+        controller.stop(); // first, always: a pure STOP that never changes the level or anything else
+        setTipsDismissed(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [controller, closeModal]);
+  }, [controller]);
 
   const run = () => {
     const state = api.current?.save();
@@ -75,7 +75,7 @@ export function EditorPage({ controller, locale, t }: Props) {
   };
 
   return (
-    <main className={confirming ? "editor confirming" : "editor"} data-level={level}>
+    <main className="editor" data-level={level}>
       <header className="editor-bar">
         <button
           type="button"
@@ -100,55 +100,80 @@ export function EditorPage({ controller, locale, t }: Props) {
             <path d="M17 5H31L43 17V31L31 43H17L5 31V17Z" />
           </svg>
         </button>
-        <div className="level-toggle" role="group" aria-label={t("editor.levelLabel")}>
+        <div
+          ref={toggle}
+          className="level-toggle"
+          role="group"
+          aria-label={t("editor.levelLabel")}
+          data-tips-dismissed={tipsDismissed ? "" : undefined}
+          onPointerEnter={() => setTipsDismissed(false)}
+          onPointerLeave={() => {
+            if (!toggle.current?.contains(document.activeElement)) setTipsDismissed(false);
+          }}
+          onFocus={() => setTipsDismissed(false)}
+          onBlur={() => setTipsDismissed(false)}
+        >
           {LEVELS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`level-button level-${value}`}
-              aria-label={t(`editor.level.${value}`)}
-              aria-pressed={level === value}
-              ref={value === "advanced" ? advancedButton : undefined}
-              onClick={() => {
-                if (value === level) return;
-                // Icons -> Advanced asks first; going back to Icons does not.
-                if (value === "advanced") {
-                  // A change of level halts the robot first, so the question never waits on a
-                  // running program.
+            <span key={value} className="level-item">
+              <button
+                type="button"
+                className={`level-button level-${value}`}
+                aria-label={t(`editor.level.${value}`)}
+                aria-pressed={level === value}
+                aria-describedby={`${tipBase}-${value}`}
+                onClick={() => {
+                  if (value === (pending.current?.level ?? level)) return;
+                  // Any change of level (both directions) halts the robot first and closes any open
+                  // Blockly dropdown; the program carries over.
+                  pending.current?.cancel(); // the latest click wins
                   controller.stop();
-                  api.current?.hideChaff(); // an open dropdown must not hide behind the question
-                  setConfirming(true);
-                } else setLevel(value);
-              }}
-            >
-              <svg viewBox="0 0 48 48" aria-hidden="true">
-                {value === "icons" ? (
-                  <>
-                    <rect x="6" y="6" width="16" height="16" rx="4" />
-                    <rect x="26" y="6" width="16" height="16" rx="4" />
-                    <rect x="6" y="26" width="16" height="16" rx="4" />
-                    <rect x="26" y="26" width="16" height="16" rx="4" />
-                  </>
-                ) : (
-                  <path d="M6 12H42M6 24H30M6 36H38" />
-                )}
-              </svg>
-            </button>
+                  api.current?.hideChaff();
+                  // Re-injecting Blockly is a long task on this thread. A STOP write still in flight
+                  // would miss its deadline and the transport would drop the link, so the level
+                  // changes only once the STOP writes settled (capped: a stuck link never freezes it).
+                  let cancelled = false;
+                  let timer: ReturnType<typeof setTimeout> | undefined;
+                  const capped = new Promise<void>((resolve) => {
+                    timer = setTimeout(resolve, STOP_BUDGET_MS);
+                  });
+                  const mine = {
+                    level: value,
+                    cancel: () => {
+                      cancelled = true;
+                      clearTimeout(timer);
+                    },
+                  };
+                  pending.current = mine;
+                  void Promise.race([controller.stopSettled(), capped]).then(() => {
+                    clearTimeout(timer);
+                    if (cancelled) return;
+                    pending.current = null;
+                    setLevel(value);
+                  });
+                }}
+              >
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                  {value === "icons" ? (
+                    <>
+                      <rect x="6" y="6" width="16" height="16" rx="4" />
+                      <rect x="26" y="6" width="16" height="16" rx="4" />
+                      <rect x="6" y="26" width="16" height="16" rx="4" />
+                      <rect x="26" y="26" width="16" height="16" rx="4" />
+                    </>
+                  ) : (
+                    <path d="M6 12H42M6 24H30M6 36H38" />
+                  )}
+                </svg>
+              </button>
+              <span id={`${tipBase}-${value}`} role="tooltip" className="level-tip">
+                {t(`editor.levelHint.${value}`)}
+              </span>
+            </span>
           ))}
         </div>
-        <SimPreview snapshot={snapshot} t={t} />
+        {/* The controller only drives the simulator today; "hub" arrives with the real-hub connection. */}
+        <SimPreview source="simulator" snapshot={snapshot} t={t} />
       </header>
-      {confirming && (
-        <LevelConfirmModal
-          t={t}
-          stopButton={stopButton}
-          onCancel={closeModal}
-          onConfirm={() => {
-            setLevel("advanced");
-            closeModal();
-          }}
-        />
-      )}
       <BlocklyWorkspace
         level={level}
         locale={locale}

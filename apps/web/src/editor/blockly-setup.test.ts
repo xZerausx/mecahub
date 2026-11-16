@@ -2,6 +2,7 @@
 import { BLOCK_SPECS, BLOCK_STYLES } from "@mecahub/blocks";
 import * as Blockly from "blockly/core";
 import { describe, expect, it } from "vitest";
+import css from "./editor.css?raw";
 import { THEME_NAME, ensureBlockly, mecahubTheme, workspaceOptions } from "./blockly-setup.js";
 
 describe("ensureBlockly", () => {
@@ -39,6 +40,37 @@ describe("mecahubTheme", () => {
     expect(theme.blockStyles).toMatchObject(BLOCK_STYLES);
     expect(theme.blockStyles.mh_hat).toMatchObject({ hat: "cap" });
     expect(theme.blockStyles).toHaveProperty("logic_blocks"); // the base theme is kept
+  });
+});
+
+describe("flyout opacity", () => {
+  it("advanced: the flyout background is 60% opaque (the blocks stay opaque)", () => {
+    const theme = workspaceOptions("advanced", "en").theme as Blockly.Theme;
+    expect(theme.componentStyles.flyoutOpacity).toBe(0.6);
+    expect(theme.componentStyles.flyoutBackgroundColour).toBeUndefined(); // only the opacity changes
+  });
+
+  it("icons: not translucent (the flyout theme is a separate one)", () => {
+    const icons = workspaceOptions("icons", "en").theme as Blockly.Theme;
+    const advanced = workspaceOptions("advanced", "en").theme as Blockly.Theme;
+    expect(icons.componentStyles.flyoutOpacity).not.toBe(0.6);
+    expect(icons).not.toBe(advanced);
+    expect(icons.name).not.toBe(advanced.name);
+  });
+
+  it("both themes keep the hat cap style and the base block styles", () => {
+    for (const level of ["icons", "advanced"] as const) {
+      const theme = workspaceOptions(level, "en").theme as Blockly.Theme;
+      expect(theme.blockStyles.mh_hat, level).toMatchObject({ hat: "cap" });
+      expect(theme.blockStyles, level).toHaveProperty("logic_blocks");
+    }
+  });
+
+  it("the stylesheet does not force the flyout opaque in Advanced", () => {
+    const rules = [...css.matchAll(/([^{}]*blocklyFlyoutBackground[^{}]*)\{([^}]*)\}/g)];
+    for (const [, selector, body] of rules) {
+      if (/fill-opacity/.test(body ?? "")) expect(selector).toMatch(/data-level="icons"/);
+    }
   });
 });
 

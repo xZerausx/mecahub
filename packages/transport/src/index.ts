@@ -7,5 +7,5 @@ export {
   TransportErrorCode,
 } from "./transport.js";
 export type { BleDeviceInfo, BleTransport, TransportState, WritePriority } from "./transport.js";
-export { createWriteQueue } from "./write-queue.js";
+export { URGENT_DEADLINE_MS, createWriteQueue } from "./write-queue.js";
 export type { WriteQueue } from "./write-queue.js";

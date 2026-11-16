@@ -31,8 +31,21 @@ function Wheel({ state, label, side }: { state: WheelState; label: string; side:
   );
 }
 
-/** A tiny picture of the simulated robot: the hub light and the two wheels. No words. */
-export function SimPreview({ snapshot, t }: { snapshot: EditorSnapshot; t: Translate }) {
+export type PreviewSource = "simulator" | "hub";
+
+/**
+ * A tiny picture of the robot: the hub light and the two wheels, under a small label that says
+ * whether it is the simulator or the real hub.
+ */
+export function SimPreview({
+  snapshot,
+  t,
+  source,
+}: {
+  snapshot: EditorSnapshot;
+  t: Translate;
+  source: PreviewSource;
+}) {
   return (
     <div
       className="sim-preview"
@@ -41,27 +54,31 @@ export function SimPreview({ snapshot, t }: { snapshot: EditorSnapshot; t: Trans
       data-led={snapshot.led}
       data-wheel-a={snapshot.wheels.a}
       data-wheel-b={snapshot.wheels.b}
+      data-source={source}
     >
-      <Wheel
-        side="a"
-        state={snapshot.wheels.a}
-        label={`${t("editor.wheelA")}: ${t(`editor.state.${snapshot.wheels.a}`)}`}
-      />
-      <svg className="hub" viewBox="0 0 64 64" role="img" aria-label={t("editor.previewLed")}>
-        <rect x="4" y="4" width="56" height="56" rx="14" className="hub-body" />
-        <circle
-          cx="32"
-          cy="32"
-          r="14"
-          className="hub-led"
-          style={{ fill: LED_FILL[snapshot.led] }}
+      <span className="sim-source">{t(`editor.source.${source}`)}</span>
+      <div className="sim-robot">
+        <Wheel
+          side="a"
+          state={snapshot.wheels.a}
+          label={`${t("editor.wheelA")}: ${t(`editor.state.${snapshot.wheels.a}`)}`}
         />
-      </svg>
-      <Wheel
-        side="b"
-        state={snapshot.wheels.b}
-        label={`${t("editor.wheelB")}: ${t(`editor.state.${snapshot.wheels.b}`)}`}
-      />
+        <svg className="hub" viewBox="0 0 64 64" role="img" aria-label={t("editor.previewLed")}>
+          <rect x="4" y="4" width="56" height="56" rx="14" className="hub-body" />
+          <circle
+            cx="32"
+            cy="32"
+            r="14"
+            className="hub-led"
+            style={{ fill: LED_FILL[snapshot.led] }}
+          />
+        </svg>
+        <Wheel
+          side="b"
+          state={snapshot.wheels.b}
+          label={`${t("editor.wheelB")}: ${t(`editor.state.${snapshot.wheels.b}`)}`}
+        />
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ describe("@mecahub/transport", () => {
         "LWP3_SERVICE_UUID",
         "TransportError",
         "TransportErrorCode",
+        "URGENT_DEADLINE_MS",
         "createWriteQueue",
       ].sort(),
     );

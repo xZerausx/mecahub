@@ -36,15 +36,29 @@ export function ensureBlockly(locale: Locale): void {
   registeredFor = locale;
 }
 
-let theme: Blockly.Theme | undefined;
+/** Advanced shows the workspace through the flyout: only its background is translucent. */
+export const ADVANCED_FLYOUT_OPACITY = 0.6;
 
-/** Blockly's classic theme plus `BLOCK_STYLES`: without it the hats render without their cap. */
-export function mecahubTheme(): Blockly.Theme {
-  theme ??= Blockly.Theme.defineTheme(THEME_NAME, {
-    name: THEME_NAME,
-    base: Blockly.Themes.Classic,
-    blockStyles: BLOCK_STYLES,
-  });
+const themes = new Map<Level, Blockly.Theme>();
+
+/**
+ * Blockly's classic theme plus `BLOCK_STYLES`: without it the hats render without their cap. Icons
+ * and Advanced get separate themes because `flyoutOpacity` (a component style, applied to the
+ * flyout background only, never to the blocks) differs; the Icons one is left as it was.
+ */
+export function mecahubTheme(level: Level = "icons"): Blockly.Theme {
+  let theme = themes.get(level);
+  if (!theme) {
+    theme = Blockly.Theme.defineTheme(level === "icons" ? THEME_NAME : `${THEME_NAME}-${level}`, {
+      name: level === "icons" ? THEME_NAME : `${THEME_NAME}-${level}`,
+      base: Blockly.Themes.Classic,
+      blockStyles: BLOCK_STYLES,
+      ...(level === "advanced"
+        ? { componentStyles: { flyoutOpacity: ADVANCED_FLYOUT_OPACITY } }
+        : {}),
+    });
+    themes.set(level, theme);
+  }
   return theme;
 }
 
@@ -56,7 +70,7 @@ export function workspaceOptions(level: Level, locale: Locale): Blockly.BlocklyO
   ensureBlockly(locale);
   const icons = level === "icons";
   return {
-    theme: mecahubTheme(),
+    theme: mecahubTheme(level),
     renderer: icons ? "zelos" : "geras",
     toolbox: toolbox(MESSAGES[locale], level),
     // Blockly's sprites and cursors default to https://static.blockly.com: serve our own copy

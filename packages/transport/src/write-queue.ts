@@ -19,6 +19,9 @@ interface Item {
   readonly deadlineAt: number;
 }
 
+/** An urgent write (STOP) must be sent and settled within this many ms of its enqueue, or the link is declared dead. */
+export const URGENT_DEADLINE_MS = 150;
+
 /** Tolerance for a timer that fires a tick before its deadline. */
 const SLACK_MS = 1;
 
@@ -45,7 +48,7 @@ export function createWriteQueue(
 ): WriteQueue {
   // TODO(hw): tune both against a real hub (see docs/protocol-notes.md): STOP must take effect
   // within 200 ms, which is why an urgent write shortens the wait for a stuck in-flight write.
-  const { timeoutMs = 1000, urgentDeadlineMs = 150, onTimeout } = options;
+  const { timeoutMs = 1000, urgentDeadlineMs = URGENT_DEADLINE_MS, onTimeout } = options;
   const queue: Item[] = [];
   let inFlight = false;
   let current: Item | undefined;

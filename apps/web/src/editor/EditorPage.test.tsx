@@ -7,9 +7,18 @@ import en from "../../../../content/i18n/en.json";
 import es from "../../../../content/i18n/es.json";
 import { createTranslator } from "../i18n.js";
 import { EditorPage } from "./EditorPage.js";
+import { SimPreview } from "./SimPreview.js";
 import type { EditorController, EditorSnapshot } from "./editor-controller.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** A level change waits for the STOP writes to settle, then re-injects: let that happen. */
+const clickLevel = (label: string): Promise<void> =>
+  act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find((b) => b.getAttribute("aria-label") === label)
+      ?.click();
+  });
 
 const idle: EditorSnapshot = {
   running: false,
@@ -36,6 +45,7 @@ function fakeController(initial: EditorSnapshot = idle) {
     connect: vi.fn(() => Promise.resolve()),
     run: vi.fn(() => Promise.resolve("completed" as const)),
     stop: vi.fn(),
+    stopSettled: vi.fn(() => Promise.resolve()),
     sentFrames: () => 0,
     dispose: vi.fn(),
   };
@@ -78,10 +88,11 @@ describe("EditorPage", () => {
     }
   });
 
-  it("shows no visible text outside the Blockly area", () => {
+  it("shows no visible text outside the Blockly area except the simulator label and tooltips", () => {
     mount(fakeController());
-    const chrome = host.querySelector(".editor-bar");
-    expect(chrome?.textContent?.trim()).toBe("");
+    const chrome = host.querySelector(".editor-bar")?.cloneNode(true) as HTMLElement;
+    for (const el of chrome.querySelectorAll(".sim-source, [role=tooltip]")) el.remove();
+    expect(chrome.textContent?.trim()).toBe("");
   });
 
   it("STOP is always enabled, even with nothing running, and calls controller.stop()", () => {
@@ -105,7 +116,7 @@ describe("EditorPage", () => {
     expect(controller.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("Escape without the modal does not move the keyboard focus", () => {
+  it("Escape does not move the keyboard focus", () => {
     mount(fakeController());
     const run = button(en["editor.run"]);
     act(() => run?.focus());
@@ -130,11 +141,10 @@ describe("EditorPage", () => {
     expect(host.querySelector(".blocklySvg")).not.toBeNull();
   });
 
-  it("switches level, keeping the program and re-injecting Blockly", () => {
+  it("switches level, keeping the program and re-injecting Blockly", async () => {
     const controller = fakeController();
     mount(controller);
-    act(() => button(en["editor.level.advanced"])?.click());
-    act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
+    await clickLevel(en["editor.level.advanced"]);
     expect(button(en["editor.level.advanced"])?.getAttribute("aria-pressed")).toBe("true");
     expect(host.querySelectorAll(".blocklySvg")).toHaveLength(1);
     act(() => button(en["editor.run"])?.click());
@@ -163,11 +173,10 @@ describe("EditorPage", () => {
     expect(document.activeElement).toBe(level);
   });
 
-  it("changing the level halts a running program first and STOP still works", () => {
+  it("changing the level halts a running program first and STOP still works", async () => {
     const controller = fakeController({ ...idle, running: true });
     mount(controller);
-    act(() => button(en["editor.level.advanced"])?.click());
-    act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
+    await clickLevel(en["editor.level.advanced"]);
     expect(controller.run).not.toHaveBeenCalled();
     expect(controller.dispose).not.toHaveBeenCalled();
     expect(controller.stop).toHaveBeenCalledTimes(1); // the level request itself
@@ -177,124 +186,87 @@ describe("EditorPage", () => {
     expect(controller.stop).toHaveBeenCalledTimes(2);
   });
 
-  describe("switching to the Advanced level asks first", () => {
-    const dialog = () => host.querySelector<HTMLElement>('[role="dialog"]');
+  describe("switching level", () => {
     const pressed = (label: string) => button(label)?.getAttribute("aria-pressed");
-    const key = (k: string, init: KeyboardEventInit = {}) =>
-      act(
-        () =>
-          void document.activeElement?.dispatchEvent(
-            new KeyboardEvent("keydown", { key: k, bubbles: true, ...init }),
-          ),
-      );
 
-    it("opens an accessible modal with the question, and changes nothing yet", () => {
+    it("has no confirmation dialog: Advanced switches at once", async () => {
       mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      const d = dialog();
-      expect(d?.getAttribute("aria-modal")).toBe("true");
-      const title = host.querySelector(`#${d?.getAttribute("aria-labelledby")}`);
-      expect(title?.textContent).toBe(en["editor.confirmAdvanced.title"]);
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-      expect(pressed(en["editor.level.advanced"])).toBe("false");
-    });
-
-    it("focuses Cancel by default, and Cancel stays on Icons", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      expect(document.activeElement).toBe(button(en["editor.confirmAdvanced.cancel"]));
-      act(() => button(en["editor.confirmAdvanced.cancel"])?.click());
-      expect(dialog()).toBeNull();
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-    });
-
-    it("Confirm switches to Advanced", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      expect(dialog()).toBeNull();
+      await clickLevel(en["editor.level.advanced"]);
+      expect(host.querySelector('[role="dialog"]')).toBeNull();
+      expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(false);
       expect(pressed(en["editor.level.advanced"])).toBe("true");
+      expect(pressed(en["editor.level.icons"])).toBe("false");
     });
 
-    it("going back to Icons needs no confirmation", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      act(() => button(en["editor.level.icons"])?.click());
-      expect(dialog()).toBeNull();
-      expect(pressed(en["editor.level.icons"])).toBe("true");
-    });
-
-    it("traps the focus in Cancel, Confirm and STOP with Tab and Shift+Tab", () => {
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
-      const cancel = button(en["editor.confirmAdvanced.cancel"]);
-      const confirm = button(en["editor.confirmAdvanced.confirm"]);
-      const stop = button(en["editor.stop"]);
-      act(() => confirm?.focus());
-      key("Tab"); // Confirm -> STOP (it stays reachable above the backdrop)
-      expect(document.activeElement).toBe(stop);
-      key("Tab"); // STOP -> wraps to Cancel
-      expect(document.activeElement).toBe(cancel);
-      key("Tab", { shiftKey: true }); // Cancel -> back to STOP
-      expect(document.activeElement).toBe(stop);
-      key("Tab", { shiftKey: true });
-      expect(document.activeElement).toBe(confirm);
-    });
-
-    it("closes any open Blockly widget (dropdown, tooltip) when the modal opens", () => {
+    it("stops the controller and closes Blockly widgets on every change, both directions", async () => {
       const spy = vi.spyOn(Blockly.WorkspaceSvg.prototype, "hideChaff");
-      mount(fakeController());
-      act(() => button(en["editor.level.advanced"])?.click());
+      const controller = fakeController();
+      mount(controller);
+      spy.mockClear(); // Blockly itself calls hideChaff while injecting
+      await clickLevel(en["editor.level.advanced"]);
+      expect(controller.stop).toHaveBeenCalledTimes(1);
       expect(spy).toHaveBeenCalled();
+      spy.mockClear();
+      await clickLevel(en["editor.level.icons"]);
+      expect(controller.stop).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenCalled();
+      expect(pressed(en["editor.level.icons"])).toBe("true");
       spy.mockRestore();
     });
 
-    it("halts the robot as soon as the modal opens, and STOP stays usable behind it", () => {
-      const controller = fakeController({ ...idle, running: true });
-      mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
-      expect(controller.stop).toHaveBeenCalledTimes(1);
-      // the bar is raised above the backdrop (editor.css: .confirming .big-button.stop)
-      expect(host.querySelector(".editor")?.classList.contains("confirming")).toBe(true);
-      const stop = button(en["editor.stop"]);
-      expect(stop?.disabled).toBe(false);
-      act(() => stop?.click());
-      expect(controller.stop).toHaveBeenCalledTimes(2);
-    });
-
-    it("gives the focus back to the level toggle however the modal closes", () => {
-      const advanced = () => button(en["editor.level.advanced"]);
-      mount(fakeController());
-      act(() => advanced()?.click());
-      act(() => button(en["editor.confirmAdvanced.cancel"])?.click());
-      expect(document.activeElement).toBe(advanced());
-      act(() => advanced()?.click());
-      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(document.activeElement).toBe(advanced());
-      act(() => advanced()?.click());
-      act(() => button(en["editor.confirmAdvanced.confirm"])?.click());
-      expect(document.activeElement).toBe(advanced());
-    });
-
-    it("Escape closes it as Cancel and is also a STOP", () => {
+    it("the last click wins when two level changes overlap, each one sending STOP", async () => {
       const controller = fakeController();
       mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
-      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(dialog()).toBeNull();
+      await act(async () => {
+        for (const label of [en["editor.level.advanced"], en["editor.level.icons"]]) {
+          [...document.querySelectorAll<HTMLButtonElement>("button")]
+            .find((b) => b.getAttribute("aria-label") === label)
+            ?.click();
+        }
+      });
       expect(pressed(en["editor.level.icons"])).toBe("true");
-      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
+      expect(pressed(en["editor.level.advanced"])).toBe("false");
+      expect(controller.stop).toHaveBeenCalledTimes(2); // Icons -> Advanced, then back to Icons
     });
 
-    it("Escape still stops a running program while the modal is open", () => {
-      const controller = fakeController({ ...idle, running: true });
+    it("a double click on the same level button is one change and one STOP", async () => {
+      const controller = fakeController();
       mount(controller);
-      act(() => button(en["editor.level.advanced"])?.click());
-      expect(dialog()).not.toBeNull();
+      await act(async () => {
+        const advanced = button(en["editor.level.advanced"]);
+        advanced?.click();
+        advanced?.click();
+      });
+      expect(pressed(en["editor.level.advanced"])).toBe("true");
+      expect(controller.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("clicking the level already active does nothing", async () => {
+      const controller = fakeController();
+      mount(controller);
+      await clickLevel(en["editor.level.icons"]);
+      expect(controller.stop).not.toHaveBeenCalled();
+    });
+
+    it("keeps the program across both directions", async () => {
+      const controller = fakeController();
+      mount(controller);
+      await clickLevel(en["editor.level.advanced"]);
+      await clickLevel(en["editor.level.icons"]);
+      act(() => button(en["editor.run"])?.click());
+      const state = (controller.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        blocks: { blocks: { type: string }[] };
+      };
+      expect(state.blocks.blocks.map((b) => b.type)).toEqual(["mh_icon_when_start"]);
+    });
+
+    it("Escape is a pure STOP: it does not change the level", async () => {
+      const controller = fakeController();
+      mount(controller);
+      await clickLevel(en["editor.level.advanced"]);
       act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-      expect(controller.stop).toHaveBeenCalledTimes(2); // opening the modal, then Esc
-      expect(dialog()).toBeNull();
+      expect(controller.stop).toHaveBeenCalledTimes(2); // the level change, then Esc
+      expect(pressed(en["editor.level.advanced"])).toBe("true");
     });
   });
 
@@ -304,5 +276,95 @@ describe("EditorPage", () => {
     expect(preview?.getAttribute("data-led")).toBe("red");
     expect(preview?.getAttribute("data-wheel-a")).toBe("forward");
     expect(preview?.getAttribute("data-wheel-b")).toBe("backward");
+  });
+
+  describe("simulator label", () => {
+    it("shows which robot the preview is: the simulator for now", () => {
+      mount(fakeController());
+      const label = host.querySelector(".sim-source");
+      expect(label).not.toBeNull();
+      expect(label?.textContent).toBe(en["editor.source.simulator"]);
+    });
+
+    it("renders the hub label for source=hub, in both languages", () => {
+      for (const [locale, catalog] of [
+        ["en", en],
+        ["es", es],
+      ] as const) {
+        act(() =>
+          root.render(<SimPreview source="hub" snapshot={idle} t={createTranslator(locale)} />),
+        );
+        expect(host.querySelector(".sim-source"), locale).not.toBeNull();
+        expect(host.querySelector(".sim-source")?.textContent, locale).toBe(
+          catalog["editor.source.hub"],
+        );
+        act(() =>
+          root.render(
+            <SimPreview source="simulator" snapshot={idle} t={createTranslator(locale)} />,
+          ),
+        );
+        expect(host.querySelector(".sim-source")?.textContent, locale).toBe(
+          catalog["editor.source.simulator"],
+        );
+      }
+    });
+  });
+
+  describe("level tooltips", () => {
+    it.each(["icons", "advanced"] as const)("the %s button is described by a role=tooltip", (v) => {
+      for (const [locale, catalog] of [
+        ["en", en],
+        ["es", es],
+      ] as const) {
+        mount(fakeController(), locale);
+        const b = button(catalog[`editor.level.${v}`]);
+        const id = b?.getAttribute("aria-describedby");
+        expect(id, locale).toBeTruthy();
+        const tip = host.querySelector(`#${id}`);
+        expect(tip?.getAttribute("role")).toBe("tooltip");
+        expect(tip?.textContent).toBe(catalog[`editor.levelHint.${v}`]);
+        expect(b?.hasAttribute("title")).toBe(false); // the native title never shows on touch
+      }
+    });
+
+    describe("Escape dismisses a visible tooltip (WCAG 1.4.13) without touching STOP", () => {
+      const toggle = () => host.querySelector<HTMLElement>(".level-toggle");
+
+      it("hides the tips until the pointer enters again, and STOP still runs first", () => {
+        const controller = fakeController();
+        mount(controller);
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+        act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+        expect(controller.stop).toHaveBeenCalledTimes(1);
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true);
+        act(() => void toggle()?.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+      });
+
+      it("stays dismissed while the focus is on a level button, until it moves away", () => {
+        mount(fakeController());
+        const b = button(en["editor.level.advanced"]);
+        act(() => b?.focus());
+        act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true);
+        act(
+          () =>
+            void toggle()?.dispatchEvent(
+              new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }),
+            ),
+        );
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(true); // focus is still there
+        act(() => b?.blur());
+        expect(toggle()?.hasAttribute("data-tips-dismissed")).toBe(false);
+      });
+    });
+
+    it("the two tooltips have different ids", () => {
+      mount(fakeController());
+      const ids = ["icons", "advanced"].map((v) =>
+        button(en[`editor.level.${v as "icons" | "advanced"}`])?.getAttribute("aria-describedby"),
+      );
+      expect(new Set(ids).size).toBe(2);
+    });
   });
 });

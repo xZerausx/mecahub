@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { URGENT_DEADLINE_MS } from "@mecahub/transport";
 import {
   STOP_BUDGET_MS,
   createEditorController,
@@ -154,5 +155,69 @@ describe("STOP", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(await result).toBe("stopped");
     expect(moving(c)).toBe(false);
+  });
+});
+
+describe("STOP frames", () => {
+  it("an idle STOP writes one burst, not two (every urgent write must meet its deadline)", async () => {
+    const c = await make(0);
+    const before = c.sentFrames();
+    c.stop();
+    await vi.advanceTimersByTimeAsync(100);
+    const once = c.sentFrames() - before;
+    expect(once).toBeGreaterThan(0); // it always reaches the hub
+    const mid = c.sentFrames();
+    c.stop();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(c.sentFrames() - mid).toBe(once); // each STOP is the same single burst
+    expect(once).toBeLessThanOrEqual(3); // A, B (and the virtual AB): never doubled
+  });
+
+  it("stopSettled resolves after the STOP writes went out, and never rejects", async () => {
+    const c = await make(30);
+    expect(await c.stopSettled()).toBeUndefined(); // no STOP yet
+    const before = c.sentFrames();
+    c.stop();
+    let settled = false;
+    void c.stopSettled().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false); // the writes are still in flight
+    await vi.advanceTimersByTimeAsync(200);
+    expect(settled).toBe(true);
+    expect(c.sentFrames()).toBeGreaterThan(before);
+  });
+});
+
+describe("a dropped link", () => {
+  // A STOP write that cannot be sent within its 150 ms deadline (a busy main thread, e.g. while
+  // Blockly re-injects on a level change) makes the transport declare the link dead. The next Run
+  // must reconnect instead of failing with "not-connected" and showing nothing.
+  it("is recovered: after a STOP that missed its deadline, Run connects again and runs", async () => {
+    const c = await make(URGENT_DEADLINE_MS + 50); // slow writes: a STOP write misses its deadline
+    c.stop(); // idle STOP, as on a level change
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(c.getSnapshot().connection).toBe("idle"); // it noticed the link is gone
+    const result = c.run(forwardProgram());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await result).toBe("completed");
+  });
+});
+
+describe("a link that drops while connecting", () => {
+  it("does not end up marked connected: the next Run connects again", async () => {
+    vi.useFakeTimers();
+    let link: { dropLink(): void } | undefined;
+    const c = createEditorController({ simWriteLatencyMs: 30, onLink: (l) => (link = l) });
+    made.push(c);
+    const connecting = c.connect().catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(100); // mid-handshake
+    expect(c.getSnapshot().connection).toBe("connecting");
+    link?.dropLink();
+    await vi.advanceTimersByTimeAsync(1000);
+    await connecting;
+    expect(c.getSnapshot().connection).not.toBe("connected");
+    const result = c.run(forwardProgram());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await result).toBe("completed");
   });
 });

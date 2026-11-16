@@ -51,7 +51,7 @@
   background: var(--go);
 }
 /* STOP is always the top layer: above Blockly's widget, dropdown and tooltip divs (z-index up to
-   100000 in 13.4.0; stop-layer.test.ts checks it) and above the modal backdrop. */
+   100000 in 13.4.0; stop-layer.test.ts checks it). */
 .big-button.stop {
   position: relative;
   z-index: 100001;
@@ -78,8 +78,69 @@
   margin-left: auto;
   border: 5px solid var(--ink);
   border-radius: 20px;
-  overflow: hidden;
   background: var(--paper);
+  position: relative; /* anchors the tooltips; clipping the toggle would hide them */
+}
+.level-item {
+  display: flex;
+}
+.level-item:first-child .level-button {
+  border-radius: 15px 0 0 15px;
+}
+.level-item:last-child .level-button {
+  border-radius: 0 15px 15px 0;
+}
+/* A custom tooltip: the native title never shows on touch and is slow. Shown on hover and keyboard
+   focus; above the workspace (Blockly's flyout and toolbox sit around 70) but under STOP. */
+.level-tip {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 36px));
+  padding: 10px 14px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  color: #fff;
+  background: var(--ink);
+  font-size: 1rem;
+  line-height: 1.35;
+  box-shadow: 0 4px 0 rgba(43, 29, 20, 0.35);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+/* Hover only where a pointer can really hover: on touch a tap leaves :hover stuck, and the tip would
+   sit over the workspace with no way to close it. The tip is hoverable (WCAG 1.4.13): it is a child
+   of .level-item, and a bridge over the gap keeps the hover while the pointer travels to it. */
+.level-tip::before {
+  content: "";
+  position: absolute;
+  top: -15px;
+  left: 0;
+  right: 0;
+  height: 15px;
+}
+.level-button:focus-visible + .level-tip {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .level-item:hover .level-tip {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+/* Esc dismisses (WCAG 1.4.13); it comes last so it wins at equal or lower specificity. */
+.level-toggle[data-tips-dismissed] .level-item .level-tip {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 .level-button {
   width: 60px;
@@ -89,7 +150,7 @@
   background: transparent;
   cursor: pointer;
 }
-.level-button + .level-button {
+.level-item + .level-item {
   border-left: 5px solid var(--ink);
 }
 .level-button svg {
@@ -112,13 +173,25 @@
 }
 
 .sim-preview {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px 12px 6px;
   border: 5px solid var(--ink);
   border-radius: 20px;
   background: var(--paper);
+}
+.sim-source {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.sim-robot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .sim-preview .wheel {
   width: 34px;
@@ -160,6 +233,10 @@
 }
 .editor-workspace .blocklyFlyoutBackground {
   fill: var(--paper-deep);
+}
+/* Icons keeps a solid flyout; Advanced takes its translucency from the theme (flyoutOpacity), which
+   Blockly sets as an attribute, so no rule here may override it. */
+.editor[data-level="icons"] .editor-workspace .blocklyFlyoutBackground {
   fill-opacity: 1;
 }
 .editor-workspace .blocklyMainBackground {
@@ -170,6 +247,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .big-button,
+  .level-tip,
   .hub-led {
     transition: none;
   }
@@ -177,47 +255,4 @@
 
 body {
   margin: 0;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(43, 29, 20, 0.55);
-}
-.modal {
-  display: grid;
-  justify-items: center;
-  gap: 18px;
-  max-width: min(90vw, 440px);
-  padding: 28px 32px 32px;
-  border: 6px solid var(--ink);
-  border-radius: 28px;
-  background: var(--paper);
-  box-shadow: 0 10px 0 var(--ink);
-}
-.modal-icon {
-  width: 72px;
-  height: 72px;
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 4;
-  stroke-linecap: round;
-}
-.modal-title {
-  margin: 0;
-  font-size: 1.6rem;
-  text-align: center;
-}
-.modal-actions {
-  display: flex;
-  gap: 28px;
-}
-.big-button.cancel {
-  background: var(--halt);
-}
-.big-button.confirm {
-  background: var(--go);
 }
