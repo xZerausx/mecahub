@@ -408,7 +408,8 @@ describe("STOP on the hub rig (mandatory: < 200 ms, always)", () => {
   // with 30 ms of write latency. Motors are measured at the hub, not in the preview. What a real hub
   // does on StartPower 127, and how fast, is supuesto, TODO(hw).
   function webRig() {
-    const hub = new SimulatedHub(defaultMoveHubConfig());
+    const hub = // A link loss must not be what stops the motors here: only the STOP frames count.
+      new SimulatedHub({ ...defaultMoveHubConfig(), stopMotorsOnLinkLoss: false });
     const bluetooth = new FakeBluetooth();
     bridgeFakeBluetooth(bluetooth, hub, { writeLatencyMs: 30 });
     return { hub, bluetooth, transport: new WebBleTransport(bluetooth) };
