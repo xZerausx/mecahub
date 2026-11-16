@@ -12,7 +12,7 @@ const result = await runtime.run(program); // never rejects: { reason, error? }
 runtime.stop(); // synchronous, idempotent: STOP is handed to the link before it returns
 ```
 
-- Stop with `runtime.stop()`, not `hub.stopAll()`: a hub-level STOP ends the run too (as `stopped`), but `runtime.stop()` is the supported path.
+- Stop with `runtime.stop()`, not `hub.stopAll()`: a hub-level STOP only ends the run when a timed command (runFor or rotate) is pending; a script in `motorStart`, `wait` or a loop would keep sending commands.
 - `RuntimeClock` (`now`, `setTimeout`, `clearTimeout`) is injectable; tests pass the simulator's
   `ManualClock`. The default uses the global timers.
 - `src/test-support/` has `FakeDevice` and a simulator helper for tests.
