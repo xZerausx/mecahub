@@ -1,0 +1,73 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "on-red",
+      "trigger": {
+        "type": "colorSeen",
+        "port": "D",
+        "color": "red"
+      },
+      "body": [
+        {
+          "id": "r-led",
+          "type": "setLed",
+          "color": "red"
+        },
+        {
+          "id": "r-stop",
+          "type": "stopAll"
+        }
+      ]
+    },
+    {
+      "id": "on-green",
+      "trigger": {
+        "type": "colorSeen",
+        "port": "D",
+        "color": "green"
+      },
+      "body": [
+        {
+          "id": "g-led",
+          "type": "setLed",
+          "color": "green"
+        },
+        {
+          "id": "g-run",
+          "type": "motorRunForTime",
+          "port": "A",
+          "speed": {
+            "type": "number",
+            "value": 60
+          },
+          "ms": {
+            "type": "number",
+            "value": 1000
+          }
+        },
+        {
+          "id": "g-off",
+          "type": "setLed",
+          "color": "black"
+        }
+      ]
+    },
+    {
+      "id": "on-none",
+      "trigger": {
+        "type": "colorSeen",
+        "port": "D",
+        "color": "none"
+      },
+      "body": [
+        {
+          "id": "n-led",
+          "type": "setLed",
+          "color": "white"
+        }
+      ]
+    }
+  ]
+}

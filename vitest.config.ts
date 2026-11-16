@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 // All projects run in Node. lwp3, hub and runtime must stay DOM-free
 // (enforced by their tsconfig `lib` and by ESLint).
 const projects = [
-  ...["lwp3", "transport", "hub", "runtime", "blocks", "simulator"].map((name) => ({
+  ...["lwp3", "transport", "hub", "runtime", "blocks", "simulator", "ir"].map((name) => ({
     root: `packages/${name}`,
     name,
     include: ["src/**/*.test.ts"],

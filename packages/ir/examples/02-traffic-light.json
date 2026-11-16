@@ -1,0 +1,59 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "s",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "l",
+          "type": "forever",
+          "body": [
+            {
+              "id": "red",
+              "type": "setLed",
+              "color": "red"
+            },
+            {
+              "id": "w1",
+              "type": "wait",
+              "ms": {
+                "type": "number",
+                "value": 3000
+              }
+            },
+            {
+              "id": "grn",
+              "type": "setLed",
+              "color": "green"
+            },
+            {
+              "id": "w2",
+              "type": "wait",
+              "ms": {
+                "type": "number",
+                "value": 3000
+              }
+            },
+            {
+              "id": "yel",
+              "type": "setLed",
+              "color": "yellow"
+            },
+            {
+              "id": "w3",
+              "type": "wait",
+              "ms": {
+                "type": "number",
+                "value": 1000
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

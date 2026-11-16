@@ -1,0 +1,77 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "s",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "f",
+          "type": "forever",
+          "body": [
+            {
+              "id": "c1",
+              "type": "setLed",
+              "color": "pink"
+            },
+            {
+              "id": "m1",
+              "type": "motorRunForTime",
+              "port": "A",
+              "speed": {
+                "type": "number",
+                "value": 70
+              },
+              "ms": {
+                "type": "number",
+                "value": 500
+              }
+            },
+            {
+              "id": "c2",
+              "type": "setLed",
+              "color": "cyan"
+            },
+            {
+              "id": "m2",
+              "type": "motorRunForTime",
+              "port": "B",
+              "speed": {
+                "type": "number",
+                "value": -70
+              },
+              "ms": {
+                "type": "number",
+                "value": 500
+              }
+            },
+            {
+              "id": "c3",
+              "type": "setLed",
+              "color": "yellow"
+            },
+            {
+              "id": "m3",
+              "type": "driveForTime",
+              "speedA": {
+                "type": "number",
+                "value": 50
+              },
+              "speedB": {
+                "type": "number",
+                "value": -50
+              },
+              "ms": {
+                "type": "number",
+                "value": 600
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

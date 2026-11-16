@@ -1,0 +1,71 @@
+{
+  "irVersion": 1,
+  "variables": [],
+  "scripts": [
+    {
+      "id": "s",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "a",
+          "type": "playSound",
+          "sound": "beep"
+        },
+        {
+          "id": "w1",
+          "type": "wait",
+          "ms": {
+            "type": "number",
+            "value": 500
+          }
+        },
+        {
+          "id": "b",
+          "type": "playSound",
+          "sound": "laser"
+        },
+        {
+          "id": "w2",
+          "type": "wait",
+          "ms": {
+            "type": "number",
+            "value": 500
+          }
+        },
+        {
+          "id": "c",
+          "type": "playSound",
+          "sound": "robot"
+        },
+        {
+          "id": "w3",
+          "type": "wait",
+          "ms": {
+            "type": "number",
+            "value": 500
+          }
+        },
+        {
+          "id": "d",
+          "type": "playSound",
+          "sound": "horn"
+        },
+        {
+          "id": "w4",
+          "type": "wait",
+          "ms": {
+            "type": "number",
+            "value": 500
+          }
+        },
+        {
+          "id": "e",
+          "type": "playSound",
+          "sound": "cheer"
+        }
+      ]
+    }
+  ]
+}

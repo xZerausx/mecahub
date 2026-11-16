@@ -1,0 +1,114 @@
+{
+  "irVersion": 1,
+  "variables": [
+    {
+      "id": "v-roll",
+      "name": "roll",
+      "initial": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "s",
+      "trigger": {
+        "type": "start"
+      },
+      "body": [
+        {
+          "id": "set",
+          "type": "setVariable",
+          "variable": "v-roll",
+          "value": {
+            "type": "random",
+            "min": {
+              "type": "number",
+              "value": 1
+            },
+            "max": {
+              "type": "number",
+              "value": 6
+            }
+          }
+        },
+        {
+          "id": "chk",
+          "type": "if",
+          "condition": {
+            "type": "logic",
+            "op": "and",
+            "left": {
+              "type": "compare",
+              "op": ">=",
+              "left": {
+                "type": "variable",
+                "variable": "v-roll"
+              },
+              "right": {
+                "type": "number",
+                "value": 2
+              }
+            },
+            "right": {
+              "type": "not",
+              "operand": {
+                "type": "compare",
+                "op": "=",
+                "left": {
+                  "type": "arithmetic",
+                  "op": "mod",
+                  "left": {
+                    "type": "variable",
+                    "variable": "v-roll"
+                  },
+                  "right": {
+                    "type": "number",
+                    "value": 2
+                  }
+                },
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "then": [
+            {
+              "id": "t-run",
+              "type": "motorRunForDegrees",
+              "port": "A",
+              "speed": {
+                "type": "number",
+                "value": 50
+              },
+              "degrees": {
+                "type": "number",
+                "value": 360
+              }
+            }
+          ],
+          "else": [
+            {
+              "id": "e-run",
+              "type": "motorRunForDegrees",
+              "port": "B",
+              "speed": {
+                "type": "number",
+                "value": -50
+              },
+              "degrees": {
+                "type": "number",
+                "value": 360
+              }
+            },
+            {
+              "id": "e-led",
+              "type": "setLed",
+              "color": "orange"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

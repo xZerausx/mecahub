@@ -1,0 +1,1090 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mecahub.invalid/schema/program-v1.json",
+  "title": "mecahub program (IR v1)",
+  "description": "Intermediate representation emitted by the block compiler and interpreted by the runtime. Scripts run in parallel; an event whose script is still running is ignored. Literal ranges are constrained here; ranges of computed values are the runtime's job (it clamps). Ports are symbolic (A-D), units are fixed: speed in percent, time in milliseconds, angles in degrees.",
+  "type": "object",
+  "properties": {
+    "irVersion": {
+      "description": "Integer IR version. Future versions get migrations.",
+      "const": 1
+    },
+    "variables": {
+      "description": "At most 500 variables.",
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/variable"
+      }
+    },
+    "scripts": {
+      "description": "At most 200 scripts.",
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/script"
+      }
+    }
+  },
+  "required": ["irVersion", "variables", "scripts"],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "description": "Opaque non-empty identifier. Statement and script ids are source block ids (used to highlight the running block) and must be unique across all scripts and statements; variable ids are unique among variables.",
+      "type": "string",
+      "minLength": 1
+    },
+    "motorPort": {
+      "description": "A single motor port. The pair \"AB\" is addressed by the drive statements, never by name.",
+      "enum": ["A", "B", "C", "D"]
+    },
+    "sensorPort": {
+      "description": "Port of a color & distance sensor.",
+      "enum": ["C", "D"]
+    },
+    "color": {
+      "description": "Color names of the LWP3 color table (lwp3 ColorId). For the hub LED, black means off.",
+      "enum": [
+        "black",
+        "pink",
+        "purple",
+        "blue",
+        "lightBlue",
+        "cyan",
+        "green",
+        "yellow",
+        "orange",
+        "red",
+        "white"
+      ]
+    },
+    "sensedColor": {
+      "description": "What the color sensor can report: the palette plus none (nothing in front of it).",
+      "enum": [
+        "black",
+        "pink",
+        "purple",
+        "blue",
+        "lightBlue",
+        "cyan",
+        "green",
+        "yellow",
+        "orange",
+        "red",
+        "white",
+        "none"
+      ]
+    },
+    "sound": {
+      "description": "Our own sound names. Sounds play on the device running the app, not on the hub (the hub has no speaker). No audio is shipped yet.",
+      "enum": ["beep", "horn", "laser", "robot", "cheer"]
+    },
+    "stopMode": {
+      "description": "How a motor stops: brake holds position, float lets it coast.",
+      "enum": ["brake", "float"]
+    },
+    "tiltDirection": {
+      "description": "Direction the hub is tilted. The IR only names directions; mapping them to the hub-frame tilt signs is the runtime's job (TODO(hw): the signs are not established, see docs/protocol-notes.md).",
+      "enum": ["forward", "backward", "left", "right"]
+    },
+    "numberLiteral": {
+      "description": "A number literal.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "number"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "variableRef": {
+      "description": "Reads a declared variable (its id).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "variable"
+        },
+        "variable": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["type", "variable"],
+      "additionalProperties": false
+    },
+    "numericSensor": {
+      "description": "A numeric sensor read. color: the LWP3 color id (port C or D). distance: the sensor's raw distance level (port C or D; TODO(hw): calibrate to cm). motorPosition: degrees relative to the position at connect time (port A-D; there is no reset block in v1). tiltX / tiltY: degrees, hub-frame sign is TODO(hw); no port.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "sensor"
+        },
+        "sensor": {
+          "enum": ["color", "distance", "tiltX", "tiltY", "motorPosition"]
+        },
+        "port": {
+          "$ref": "#/$defs/motorPort"
+        }
+      },
+      "required": ["type", "sensor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "sensor": {
+                "enum": ["color", "distance"]
+              }
+            },
+            "required": ["sensor"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["port"],
+            "properties": {
+              "port": {
+                "$ref": "#/$defs/sensorPort"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "sensor": {
+                "enum": ["motorPosition"]
+              }
+            },
+            "required": ["sensor"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["port"]
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "sensor": {
+                "enum": ["tiltX", "tiltY"]
+              }
+            },
+            "required": ["sensor"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "port": false
+            }
+          }
+        }
+      ]
+    },
+    "arithmetic": {
+      "description": "Arithmetic on numbers. Division by zero gives 0. mod is the floored modulo (the result has the sign of the divisor); mod by zero gives 0.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "arithmetic"
+        },
+        "op": {
+          "enum": ["+", "-", "*", "/", "mod"]
+        },
+        "left": {
+          "$ref": "#/$defs/numericExpression"
+        },
+        "right": {
+          "$ref": "#/$defs/numericExpression"
+        }
+      },
+      "required": ["type", "op", "left", "right"],
+      "additionalProperties": false
+    },
+    "random": {
+      "description": "A random integer in [min, max]. When both are number literals, min <= max is checked by the semantic layer.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "random"
+        },
+        "min": {
+          "$ref": "#/$defs/numericExpression"
+        },
+        "max": {
+          "$ref": "#/$defs/numericExpression"
+        }
+      },
+      "required": ["type", "min", "max"],
+      "additionalProperties": false
+    },
+    "numericExpression": {
+      "description": "An expression that evaluates to a number.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/numberLiteral"
+        },
+        {
+          "$ref": "#/$defs/variableRef"
+        },
+        {
+          "$ref": "#/$defs/numericSensor"
+        },
+        {
+          "$ref": "#/$defs/arithmetic"
+        },
+        {
+          "$ref": "#/$defs/random"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "booleanLiteral": {
+      "description": "A boolean literal.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "buttonSensor": {
+      "description": "True while the hub button is pressed.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "sensor"
+        },
+        "sensor": {
+          "const": "button"
+        }
+      },
+      "required": ["type", "sensor"],
+      "additionalProperties": false
+    },
+    "compare": {
+      "description": "Compares two numbers.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "compare"
+        },
+        "op": {
+          "enum": ["<", "<=", "=", "!=", ">", ">="]
+        },
+        "left": {
+          "$ref": "#/$defs/numericExpression"
+        },
+        "right": {
+          "$ref": "#/$defs/numericExpression"
+        }
+      },
+      "required": ["type", "op", "left", "right"],
+      "additionalProperties": false
+    },
+    "logic": {
+      "description": "Logical and / or of two conditions.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "logic"
+        },
+        "op": {
+          "enum": ["and", "or"]
+        },
+        "left": {
+          "$ref": "#/$defs/booleanExpression"
+        },
+        "right": {
+          "$ref": "#/$defs/booleanExpression"
+        }
+      },
+      "required": ["type", "op", "left", "right"],
+      "additionalProperties": false
+    },
+    "not": {
+      "description": "Logical negation.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "not"
+        },
+        "operand": {
+          "$ref": "#/$defs/booleanExpression"
+        }
+      },
+      "required": ["type", "operand"],
+      "additionalProperties": false
+    },
+    "colorIs": {
+      "description": "True when the color sensor on the port currently reports the color.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "colorIs"
+        },
+        "port": {
+          "$ref": "#/$defs/sensorPort"
+        },
+        "color": {
+          "$ref": "#/$defs/sensedColor"
+        }
+      },
+      "required": ["type", "port", "color"],
+      "additionalProperties": false
+    },
+    "booleanExpression": {
+      "description": "An expression that evaluates to true or false.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/booleanLiteral"
+        },
+        {
+          "$ref": "#/$defs/buttonSensor"
+        },
+        {
+          "$ref": "#/$defs/compare"
+        },
+        {
+          "$ref": "#/$defs/logic"
+        },
+        {
+          "$ref": "#/$defs/not"
+        },
+        {
+          "$ref": "#/$defs/colorIs"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "speed": {
+      "description": "Motor speed in percent. A number literal must be in -100..100; the runtime clamps computed values.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/numericExpression"
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100
+              }
+            }
+          }
+        }
+      ]
+    },
+    "duration": {
+      "description": "Duration in milliseconds. A number literal must be an integer >= 0; the runtime clamps and rounds computed values.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/numericExpression"
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "angle": {
+      "description": "Rotation in degrees (the sign of the speed sets the direction). A number literal must be an integer >= 0; the runtime clamps and rounds computed values.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/numericExpression"
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "count": {
+      "description": "Repetition count. A number literal must be an integer >= 0; the runtime clamps and rounds computed values.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/numericExpression"
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "anyNumber": {
+      "description": "Any numeric expression, no range.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/numericExpression"
+        }
+      ]
+    },
+    "statements": {
+      "description": "A list of statements (at most 1000 per list). May be empty.",
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/statement"
+      }
+    },
+    "motorRunForTime": {
+      "description": "Runs one motor for a time, then brakes. A new command on a port replaces the running one on that port (last command wins). Speed 0 waits the time with the motor stopped.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "motorRunForTime"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "port": {
+          "$ref": "#/$defs/motorPort"
+        },
+        "speed": {
+          "$ref": "#/$defs/speed"
+        },
+        "ms": {
+          "$ref": "#/$defs/duration"
+        }
+      },
+      "required": ["type", "id", "port", "speed", "ms"],
+      "additionalProperties": false
+    },
+    "motorRunForDegrees": {
+      "description": "Turns one motor by an angle, then brakes. A number literal speed of 0 is rejected (the motor would never get there); a computed speed that evaluates to 0 skips the command.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "motorRunForDegrees"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "port": {
+          "$ref": "#/$defs/motorPort"
+        },
+        "speed": {
+          "$ref": "#/$defs/speed"
+        },
+        "degrees": {
+          "$ref": "#/$defs/angle"
+        }
+      },
+      "required": ["type", "id", "port", "speed", "degrees"],
+      "additionalProperties": false
+    },
+    "motorStart": {
+      "description": "Starts one motor and continues with the next statement. To change the speed, start it again with the new speed.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "motorStart"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "port": {
+          "$ref": "#/$defs/motorPort"
+        },
+        "speed": {
+          "$ref": "#/$defs/speed"
+        }
+      },
+      "required": ["type", "id", "port", "speed"],
+      "additionalProperties": false
+    },
+    "motorStop": {
+      "description": "Stops one motor.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "motorStop"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "port": {
+          "$ref": "#/$defs/motorPort"
+        },
+        "mode": {
+          "$ref": "#/$defs/stopMode"
+        }
+      },
+      "required": ["type", "id", "port", "mode"],
+      "additionalProperties": false
+    },
+    "driveForTime": {
+      "description": "Runs the AB pair (motor A at speedA, motor B at speedB) for a time, then brakes.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "driveForTime"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "speedA": {
+          "$ref": "#/$defs/speed"
+        },
+        "speedB": {
+          "$ref": "#/$defs/speed"
+        },
+        "ms": {
+          "$ref": "#/$defs/duration"
+        }
+      },
+      "required": ["type", "id", "speedA", "speedB", "ms"],
+      "additionalProperties": false
+    },
+    "driveForDegrees": {
+      "description": "Turns the AB pair by an angle (each motor turns by degrees; turning in place is opposite speeds), then brakes. Both speeds being number literal 0 is rejected; a computed 0 skips the command.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "driveForDegrees"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "speedA": {
+          "$ref": "#/$defs/speed"
+        },
+        "speedB": {
+          "$ref": "#/$defs/speed"
+        },
+        "degrees": {
+          "$ref": "#/$defs/angle"
+        }
+      },
+      "required": ["type", "id", "speedA", "speedB", "degrees"],
+      "additionalProperties": false
+    },
+    "driveStart": {
+      "description": "Starts the AB pair and continues with the next statement.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "driveStart"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "speedA": {
+          "$ref": "#/$defs/speed"
+        },
+        "speedB": {
+          "$ref": "#/$defs/speed"
+        }
+      },
+      "required": ["type", "id", "speedA", "speedB"],
+      "additionalProperties": false
+    },
+    "driveStop": {
+      "description": "Stops the AB pair.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "driveStop"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "$ref": "#/$defs/stopMode"
+        }
+      },
+      "required": ["type", "id", "mode"],
+      "additionalProperties": false
+    },
+    "setLed": {
+      "description": "Sets the hub LED (black is off).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "setLed"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "required": ["type", "id", "color"],
+      "additionalProperties": false
+    },
+    "playSound": {
+      "description": "Plays a sound on the device running the app (not on the hub). Does not block the script.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "playSound"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "sound": {
+          "$ref": "#/$defs/sound"
+        }
+      },
+      "required": ["type", "id", "sound"],
+      "additionalProperties": false
+    },
+    "wait": {
+      "description": "Waits without blocking other scripts.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "wait"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "ms": {
+          "$ref": "#/$defs/duration"
+        }
+      },
+      "required": ["type", "id", "ms"],
+      "additionalProperties": false
+    },
+    "waitUntil": {
+      "description": "Waits until the condition is true. Runtime rule: every poll of the condition must yield to the scheduler, so other scripts and STOP are never starved.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "waitUntil"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "condition": {
+          "$ref": "#/$defs/booleanExpression"
+        }
+      },
+      "required": ["type", "id", "condition"],
+      "additionalProperties": false
+    },
+    "repeat": {
+      "description": "Runs the body a fixed number of times. Runtime rule: must yield to the scheduler on every iteration (also when the body is empty).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "repeat"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "times": {
+          "$ref": "#/$defs/count"
+        },
+        "body": {
+          "$ref": "#/$defs/statements"
+        }
+      },
+      "required": ["type", "id", "times", "body"],
+      "additionalProperties": false
+    },
+    "forever": {
+      "description": "Runs the body until the script is stopped. Runtime rule: the loop must yield to the scheduler on every iteration (also when the body is empty), so other scripts and STOP are never starved.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "forever"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "body": {
+          "$ref": "#/$defs/statements"
+        }
+      },
+      "required": ["type", "id", "body"],
+      "additionalProperties": false
+    },
+    "while": {
+      "description": "Runs the body while the condition is true. Runtime rule: must yield to the scheduler on every iteration.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "while"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "condition": {
+          "$ref": "#/$defs/booleanExpression"
+        },
+        "body": {
+          "$ref": "#/$defs/statements"
+        }
+      },
+      "required": ["type", "id", "condition", "body"],
+      "additionalProperties": false
+    },
+    "if": {
+      "description": "Runs then when the condition is true, otherwise else (optional). Both arrays may be empty.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "if"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "condition": {
+          "$ref": "#/$defs/booleanExpression"
+        },
+        "then": {
+          "$ref": "#/$defs/statements"
+        },
+        "else": {
+          "$ref": "#/$defs/statements"
+        }
+      },
+      "required": ["type", "id", "condition", "then"],
+      "additionalProperties": false
+    },
+    "setVariable": {
+      "description": "Sets a declared variable (its id).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "setVariable"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "variable": {
+          "$ref": "#/$defs/id"
+        },
+        "value": {
+          "$ref": "#/$defs/anyNumber"
+        }
+      },
+      "required": ["type", "id", "variable", "value"],
+      "additionalProperties": false
+    },
+    "changeVariable": {
+      "description": "Adds a number to a declared variable (its id).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "changeVariable"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "variable": {
+          "$ref": "#/$defs/id"
+        },
+        "by": {
+          "$ref": "#/$defs/anyNumber"
+        }
+      },
+      "required": ["type", "id", "variable", "by"],
+      "additionalProperties": false
+    },
+    "stopAll": {
+      "description": "Halts every script and every motor (the STOP behaviour, which must complete in under 200 ms).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "stopAll"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false
+    },
+    "stopScript": {
+      "description": "Ends only the script that runs this statement.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "stopScript"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false
+    },
+    "statement": {
+      "description": "A statement. Statements of a script run in order; the runtime reports the running statement's id for highlighting.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/motorRunForTime"
+        },
+        {
+          "$ref": "#/$defs/motorRunForDegrees"
+        },
+        {
+          "$ref": "#/$defs/motorStart"
+        },
+        {
+          "$ref": "#/$defs/motorStop"
+        },
+        {
+          "$ref": "#/$defs/driveForTime"
+        },
+        {
+          "$ref": "#/$defs/driveForDegrees"
+        },
+        {
+          "$ref": "#/$defs/driveStart"
+        },
+        {
+          "$ref": "#/$defs/driveStop"
+        },
+        {
+          "$ref": "#/$defs/setLed"
+        },
+        {
+          "$ref": "#/$defs/playSound"
+        },
+        {
+          "$ref": "#/$defs/wait"
+        },
+        {
+          "$ref": "#/$defs/waitUntil"
+        },
+        {
+          "$ref": "#/$defs/repeat"
+        },
+        {
+          "$ref": "#/$defs/forever"
+        },
+        {
+          "$ref": "#/$defs/while"
+        },
+        {
+          "$ref": "#/$defs/if"
+        },
+        {
+          "$ref": "#/$defs/setVariable"
+        },
+        {
+          "$ref": "#/$defs/changeVariable"
+        },
+        {
+          "$ref": "#/$defs/stopAll"
+        },
+        {
+          "$ref": "#/$defs/stopScript"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "startTrigger": {
+      "description": "Fires once when the program is started.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "start"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "colorSeenTrigger": {
+      "description": "Edge-triggered: fires on the transition into the condition and re-arms once it is false again. Ignored while its script runs.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "colorSeen"
+        },
+        "port": {
+          "$ref": "#/$defs/sensorPort"
+        },
+        "color": {
+          "$ref": "#/$defs/sensedColor"
+        }
+      },
+      "required": ["type", "port", "color"],
+      "additionalProperties": false
+    },
+    "distanceBelowTrigger": {
+      "description": "Edge-triggered (fires when the reading drops below value, re-arms when it is back at or above). Unit: the sensor's raw distance level (TODO(hw): calibrate to cm).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "distanceBelow"
+        },
+        "port": {
+          "$ref": "#/$defs/sensorPort"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": ["type", "port", "value"],
+      "additionalProperties": false
+    },
+    "tiltTrigger": {
+      "description": "Edge-triggered: fires when the hub is tilted into the direction, re-arms once it is back.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "tilt"
+        },
+        "direction": {
+          "$ref": "#/$defs/tiltDirection"
+        }
+      },
+      "required": ["type", "direction"],
+      "additionalProperties": false
+    },
+    "buttonPressedTrigger": {
+      "description": "Fires on each button press (edge-triggered).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "buttonPressed"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "trigger": {
+      "description": "What starts a script. Event semantics: if the script is still running when its event fires again, the event is ignored (the script is not restarted).",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/startTrigger"
+        },
+        {
+          "$ref": "#/$defs/colorSeenTrigger"
+        },
+        {
+          "$ref": "#/$defs/distanceBelowTrigger"
+        },
+        {
+          "$ref": "#/$defs/tiltTrigger"
+        },
+        {
+          "$ref": "#/$defs/buttonPressedTrigger"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "variable": {
+      "description": "A global variable. Numbers only in v1. The runtime resets every variable to `initial` when the program starts.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "initial": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "name", "initial"],
+      "additionalProperties": false
+    },
+    "script": {
+      "description": "A trigger and the statements it runs. All scripts run in parallel.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "trigger": {
+          "$ref": "#/$defs/trigger"
+        },
+        "body": {
+          "$ref": "#/$defs/statements"
+        }
+      },
+      "required": ["id", "trigger", "body"],
+      "additionalProperties": false
+    }
+  }
+}
