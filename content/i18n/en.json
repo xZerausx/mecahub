@@ -5,6 +5,8 @@
   "editor.levelLabel": "Level",
   "editor.level.icons": "Pictures level",
   "editor.level.advanced": "Advanced level",
+  "editor.levelHint.icons": "Picture blocks, no reading needed. To get started.",
+  "editor.levelHint.advanced": "Blocks with words and numbers: sensors, variables, loops.",
   "editor.workspace": "Program area",
   "editor.preview": "Robot preview",
   "editor.source.simulator": "Simulator",

@@ -273,4 +273,30 @@ describe("EditorPage", () => {
       }
     });
   });
+
+  describe("level tooltips", () => {
+    it.each(["icons", "advanced"] as const)("the %s button is described by a role=tooltip", (v) => {
+      for (const [locale, catalog] of [
+        ["en", en],
+        ["es", es],
+      ] as const) {
+        mount(fakeController(), locale);
+        const b = button(catalog[`editor.level.${v}`]);
+        const id = b?.getAttribute("aria-describedby");
+        expect(id, locale).toBeTruthy();
+        const tip = host.querySelector(`#${id}`);
+        expect(tip?.getAttribute("role")).toBe("tooltip");
+        expect(tip?.textContent).toBe(catalog[`editor.levelHint.${v}`]);
+        expect(b?.hasAttribute("title")).toBe(false); // the native title never shows on touch
+      }
+    });
+
+    it("the two tooltips have different ids", () => {
+      mount(fakeController());
+      const ids = ["icons", "advanced"].map((v) =>
+        button(en[`editor.level.${v as "icons" | "advanced"}`])?.getAttribute("aria-describedby"),
+      );
+      expect(new Set(ids).size).toBe(2);
+    });
+  });
 });

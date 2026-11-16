@@ -1,5 +1,5 @@
 import type { Level } from "@mecahub/blocks";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
 import type { EditorController } from "./editor-controller.js";
@@ -23,6 +23,7 @@ const LEVELS: readonly Level[] = ["icons", "advanced"];
 export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
+  const tipBase = useId();
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -87,34 +88,39 @@ export function EditorPage({ controller, locale, t }: Props) {
         </button>
         <div className="level-toggle" role="group" aria-label={t("editor.levelLabel")}>
           {LEVELS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`level-button level-${value}`}
-              aria-label={t(`editor.level.${value}`)}
-              aria-pressed={level === value}
-              onClick={() => {
-                if (value === level) return;
-                // Any change of level (both directions) halts the robot first and closes any open
-                // Blockly dropdown; the program carries over.
-                controller.stop();
-                api.current?.hideChaff();
-                setLevel(value);
-              }}
-            >
-              <svg viewBox="0 0 48 48" aria-hidden="true">
-                {value === "icons" ? (
-                  <>
-                    <rect x="6" y="6" width="16" height="16" rx="4" />
-                    <rect x="26" y="6" width="16" height="16" rx="4" />
-                    <rect x="6" y="26" width="16" height="16" rx="4" />
-                    <rect x="26" y="26" width="16" height="16" rx="4" />
-                  </>
-                ) : (
-                  <path d="M6 12H42M6 24H30M6 36H38" />
-                )}
-              </svg>
-            </button>
+            <span key={value} className="level-item">
+              <button
+                type="button"
+                className={`level-button level-${value}`}
+                aria-label={t(`editor.level.${value}`)}
+                aria-pressed={level === value}
+                aria-describedby={`${tipBase}-${value}`}
+                onClick={() => {
+                  if (value === level) return;
+                  // Any change of level (both directions) halts the robot first and closes any open
+                  // Blockly dropdown; the program carries over.
+                  controller.stop();
+                  api.current?.hideChaff();
+                  setLevel(value);
+                }}
+              >
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                  {value === "icons" ? (
+                    <>
+                      <rect x="6" y="6" width="16" height="16" rx="4" />
+                      <rect x="26" y="6" width="16" height="16" rx="4" />
+                      <rect x="6" y="26" width="16" height="16" rx="4" />
+                      <rect x="26" y="26" width="16" height="16" rx="4" />
+                    </>
+                  ) : (
+                    <path d="M6 12H42M6 24H30M6 36H38" />
+                  )}
+                </svg>
+              </button>
+              <span id={`${tipBase}-${value}`} role="tooltip" className="level-tip">
+                {t(`editor.levelHint.${value}`)}
+              </span>
+            </span>
           ))}
         </div>
         {/* The controller only drives the simulator today; "hub" arrives with the real-hub connection. */}

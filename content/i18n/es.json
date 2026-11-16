@@ -5,6 +5,8 @@
   "editor.levelLabel": "Nivel",
   "editor.level.icons": "Nivel de dibujos",
   "editor.level.advanced": "Nivel avanzado",
+  "editor.levelHint.icons": "Bloques con dibujos, sin leer. Para empezar.",
+  "editor.levelHint.advanced": "Bloques con palabras y números: sensores, variables, repeticiones.",
   "editor.workspace": "Zona del programa",
   "editor.preview": "Vista previa del robot",
   "editor.source.simulator": "Simulador",
