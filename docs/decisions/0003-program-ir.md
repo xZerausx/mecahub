@@ -62,6 +62,28 @@ Values:
 
 `validateProgram` takes untrusted input, so it is bounded: at most 200 scripts, 500 variables and 1000 statements per list (schema `maxItems`, code `too-many`), and at most 20,000 objects and arrays in the whole program, counted iteratively before the schema runs (code `too-large`). With those bounds Ajv can report every error (`allErrors`) in bounded time, so there is a single validator. At most 100 errors are returned. On success the program is returned as a copy (`structuredClone`).
 
+## Runtime (`@mecahub/runtime`)
+
+The interpreter that executes these semantics. It runs in Node (no browser APIs, no React) and reaches the robot only through a narrow `RuntimeDevice` interface; `fromMoveHub(hub)` adapts the hub layer to it. A recording test double lives in the package's `src/test-support/` and is not exported.
+
+- `createRuntime({ device, clock?, sound?, random? })` returns `run(program)` (never rejects; resolves `completed`, `stopped`, `stopAll` or `error`), a synchronous idempotent `stop()`, `running`, and `onBlockEnter` / `onBlockExit` / `onError` / `onFinished`. `run()` validates first (`invalid-program`), refuses a second program while one runs (`busy`) and refuses programs that need a missing motor or sensor before anything moves (`missing-device`).
+- One `AbortController` per run and one per script (`stopScript` aborts only its own). Every wait goes through an abortable `sleep` / `race`, and every device call is preceded by an `aborted` check, so nothing is sent after STOP. `stop()` aborts, hands the STOP frames to the device and drops the subscriptions, all synchronously. `stop()` hands STOP to the device first, then aborts. Every `stop()` call sends STOP, also when nothing is running (a finished program may have left a motor on): the result and `onFinished` come once, the extra STOPs are deliberate. A `stopAll` that throws or rejects still ends the run and is reported as `stop-failed` through `onError`.
+- Stop through `runtime.stop()`. If the app stops the hub directly (`hub.stopAll()`, `disconnect()`), a pending timed command resolves "discarded" with its port claim intact; the runtime reads that as an external STOP and ends the run as `stopped`, so nothing is sent after it.
+- Loops yield one macrotask (`clock.setTimeout(0)`) on every iteration and on every `waitUntil` poll.
+- The runtime subscribes only to the sensors the program reads and waits for their first value (2 s, then `sensor-timeout`). Event scripts use one edge detector each. A condition that is already true when the run starts fires once. A program with event scripts never finishes by itself.
+- A hub error ends the run: STOP first, then `onError`, then the result.
+- Last command wins per port through a `PortArbiter`: a statement waiting on a port that another command replaces ends and its script continues. If a `driveFor*` with unequal speeds is replaced on one wheel only, the other wheel's timed command keeps running on the hub until it expires.
+
+Assumptions (`supuesto`, all `TODO(hw)`):
+
+- Tilt directions: forward is +y, backward -y, right +x, left -x, firing at 20 degrees and re-arming below 15 (hysteresis). The hub-frame signs are not measured.
+- `distance` and `distanceBelow` use the units of the sensor's mode 8 (inches). Calibration to cm is open.
+- `motorPosition` is relative to the first position reading of the run, not to connect time. This differs from the semantics above ("relative to the position at connect time"); the runtime cannot see connect time through the device seam.
+- The hub reports the current value right after a sensor subscription is set up. Without it the run ends with `sensor-timeout`.
+- `driveForTime` / `driveForDegrees` have no hub command for the virtual port, so they run `runFor` / `rotate` on A and B in parallel. The two motors finish independently, so unequal speeds do not draw a straight line the way the virtual port might. With one speed at 0, that wheel is held (brake) instead of left alone. Times above 32767 ms are sent as chunks.
+- Sounds go to an injected `SoundSink` and are not awaited; the default plays nothing.
+- A program that completes on its own leaves its motors as they are (no implicit STOP).
+
 ## Consequences
 
 - Validation uses Ajv 8, which compiles the schema to code with `new Function`. A future Content-Security-Policy without `unsafe-eval` would need a precompiled (Ajv standalone) validator generated at build time. The schema and the `validateProgram` contract do not change.

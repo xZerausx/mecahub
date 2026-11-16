@@ -257,7 +257,21 @@ importers:
         specifier: ^4.10.2
         version: 4.10.2
 
-  packages/runtime: {}
+  packages/runtime:
+    dependencies:
+      '@mecahub/hub':
+        specifier: workspace:*
+        version: link:../hub
+      '@mecahub/ir':
+        specifier: workspace:*
+        version: link:../ir
+      '@mecahub/lwp3':
+        specifier: workspace:*
+        version: link:../lwp3
+    devDependencies:
+      '@mecahub/simulator':
+        specifier: workspace:*
+        version: link:../simulator
 
   packages/simulator:
     dependencies:
