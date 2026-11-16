@@ -1,1 +1,11 @@
 export const PACKAGE_NAME = "@mecahub/blocks";
+export { compile } from "./compile.js";
+export type { CompileError, CompileResult } from "./compile.js";
+export { decompile } from "./decompile.js";
+export type { DecompileError, DecompileResult, DecompileWarning } from "./decompile.js";
+export type { BlockState, WorkspaceState } from "./serialization.js";
+export { BLOCK_STYLES, HAT_STYLE, blockDefinitions, messageKeys } from "./definitions.js";
+export type { ArgJson, BlockJson, Messages } from "./definitions.js";
+export { BLOCK_SPECS, specFor } from "./spec.js";
+export type { BlockSpec, CategoryId } from "./spec.js";
+export { toolbox } from "./toolbox.js";

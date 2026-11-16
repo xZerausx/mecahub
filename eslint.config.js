@@ -6,12 +6,20 @@ import tseslint from "typescript-eslint";
 const bluetoothMessage =
   "Use the BleTransport interface; navigator.bluetooth is only allowed in packages/transport/src/web.";
 
+const bluetoothRules = [
+  "MemberExpression[property.name='bluetooth'][object.name='navigator']",
+  "MemberExpression[property.name='bluetooth'][object.property.name='navigator']",
+  "VariableDeclarator[init.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
+  "VariableDeclarator[init.property.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
+].map((selector) => ({ selector, message: bluetoothMessage }));
+
 const nodeOnlyPackages = [
   "packages/lwp3/**",
   "packages/hub/**",
   "packages/runtime/**",
   "packages/simulator/**",
   "packages/ir/**",
+  "packages/blocks/**",
 ];
 
 const reactImports = {
@@ -25,6 +33,13 @@ const testingImports = {
   message: "@mecahub/*/testing is test support: import it only from test files.",
 };
 const testFiles = ["**/*.test.{ts,tsx}", "**/src/testing/**", "**/src/test-support/**"];
+
+// blocks only describes Blockly data; the editor itself (and the DOM it needs) is mounted by apps/web.
+const blocklyImports = {
+  group: ["blockly", "blockly/*"],
+  allowTypeImports: true,
+  message: "packages/blocks must run in Node: import types from blockly, never its runtime.",
+};
 
 const nodeOnlyFiles = nodeOnlyPackages
   .map((p) => `${p}/*.ts`)
@@ -52,15 +67,7 @@ export default tseslint.config(
         },
       ],
       // Also catches window.navigator / globalThis.navigator and destructuring.
-      "no-restricted-syntax": [
-        "error",
-        ...[
-          "MemberExpression[property.name='bluetooth'][object.name='navigator']",
-          "MemberExpression[property.name='bluetooth'][object.property.name='navigator']",
-          "VariableDeclarator[init.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
-          "VariableDeclarator[init.property.name='navigator'] > ObjectPattern > Property[key.name='bluetooth']",
-        ].map((selector) => ({ selector, message: bluetoothMessage })),
-      ],
+      "no-restricted-syntax": ["error", ...bluetoothRules],
     },
   },
   {
@@ -91,5 +98,37 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", { patterns: [reactImports, testingImports] }],
     },
+  },
+  {
+    // blocks: a flat-config rule is replaced, not merged, so the lists are repeated once more.
+    files: ["packages/blocks/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [reactImports, blocklyImports] }],
+      // Dynamic import("blockly") is not covered by no-restricted-imports; the Bluetooth selectors
+      // are repeated because this rule replaces the global one.
+      "no-restricted-syntax": [
+        "error",
+        ...bluetoothRules,
+        {
+          selector: "ImportExpression[source.value=/^blockly(\\/|$)/]",
+          message: "packages/blocks must run in Node: never load blockly at runtime.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/blocks/**/*.ts"],
+    ignores: testFiles,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [reactImports, testingImports, blocklyImports] },
+      ],
+    },
+  },
+  {
+    // The one smoke test that runs real Blockly (in Node, with jsdom).
+    files: ["packages/blocks/src/blockly-smoke.test.ts"],
+    rules: { "no-restricted-imports": "off", "no-restricted-syntax": "off" },
   },
 );

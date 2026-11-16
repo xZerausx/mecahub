@@ -11,5 +11,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mecahub/ir": "workspace:*",
+    "blockly": "13.4.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "30.0.0",
+    "jsdom": "30.1.0"
   }
 }
