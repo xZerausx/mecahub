@@ -14,6 +14,10 @@ const LOCALES = [
     turnLeft: /^Turn left/,
     led: /^Light/,
     red: "red",
+    advanced: "Advanced level",
+    icons: "Pictures level",
+    cancel: "Stay on the Pictures level",
+    confirm: "Switch to the Advanced level",
   },
   {
     locale: "es-ES",
@@ -23,6 +27,10 @@ const LOCALES = [
     turnLeft: /^Girar a la izquierda/,
     led: /^Luz/,
     red: "rojo",
+    advanced: "Nivel avanzado",
+    icons: "Nivel de dibujos",
+    cancel: "Quedarme en el nivel de dibujos",
+    confirm: "Pasar al nivel avanzado",
   },
 ] as const;
 
@@ -107,6 +115,41 @@ for (const l of LOCALES) {
       await expect.poll(() => moving(page), { timeout: 10_000 }).toBe(true);
       await page.getByRole("button", { name: l.stop }).click();
       await expect.poll(() => moving(page), { timeout: 2_000 }).toBe(false);
+    });
+
+    test("asks before switching to Advanced: Cancel stays, Confirm switches, back is free", async ({
+      page,
+    }) => {
+      const level = (name: string) => page.getByRole("button", { name, exact: true });
+      await level(l.advanced).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(page.getByRole("button", { name: l.cancel })).toBeFocused();
+
+      await page.getByRole("button", { name: l.cancel }).click();
+      await expect(dialog).toBeHidden();
+      await expect(level(l.icons)).toHaveAttribute("aria-pressed", "true");
+
+      await level(l.advanced).click();
+      await page.getByRole("button", { name: l.confirm }).click();
+      await expect(dialog).toBeHidden();
+      await expect(level(l.advanced)).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator(".blocklyToolbox")).toBeVisible(); // the category toolbox
+
+      await level(l.icons).click(); // going back needs no question
+      await expect(dialog).toBeHidden();
+      await expect(level(l.icons)).toHaveAttribute("aria-pressed", "true");
+    });
+
+    test("Escape closes the modal as Cancel", async ({ page }) => {
+      await page.getByRole("button", { name: l.advanced, exact: true }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(page.getByRole("button", { name: l.icons, exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
     test("Escape stops a running program too", async ({ page }) => {

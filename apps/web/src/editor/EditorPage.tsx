@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import type { Locale, Translate } from "../i18n.js";
 import { BlocklyWorkspace, type WorkspaceApi } from "./BlocklyWorkspace.js";
 import type { EditorController } from "./editor-controller.js";
+import { LevelConfirmModal } from "./LevelConfirmModal.js";
 import { SimPreview } from "./SimPreview.js";
 import "./editor.css";
 
@@ -23,6 +24,8 @@ const LEVELS: readonly Level[] = ["icons", "advanced"];
 export function EditorPage({ controller, locale, t }: Props) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [level, setLevel] = useState<Level>("icons");
+  const [confirming, setConfirming] = useState(false);
+  const advancedButton = useRef<HTMLButtonElement>(null);
   const api = useRef<WorkspaceApi | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -46,7 +49,10 @@ export function EditorPage({ controller, locale, t }: Props) {
   // Esc is a second STOP: it works wherever the focus is, also inside Blockly.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") controller.stop();
+      if (event.key === "Escape") {
+        controller.stop(); // STOP has priority: Esc is never swallowed by the modal
+        setConfirming(false); // and, with the modal open, it also means Cancel
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -91,7 +97,13 @@ export function EditorPage({ controller, locale, t }: Props) {
               className={`level-button level-${value}`}
               aria-label={t(`editor.level.${value}`)}
               aria-pressed={level === value}
-              onClick={() => setLevel(value)}
+              ref={value === "advanced" ? advancedButton : undefined}
+              onClick={() => {
+                if (value === level) return;
+                // Icons -> Advanced asks first; going back to Icons does not.
+                if (value === "advanced") setConfirming(true);
+                else setLevel(value);
+              }}
             >
               <svg viewBox="0 0 48 48" aria-hidden="true">
                 {value === "icons" ? (
@@ -110,6 +122,19 @@ export function EditorPage({ controller, locale, t }: Props) {
         </div>
         <SimPreview snapshot={snapshot} t={t} />
       </header>
+      {confirming && (
+        <LevelConfirmModal
+          t={t}
+          onCancel={() => {
+            setConfirming(false);
+            advancedButton.current?.focus();
+          }}
+          onConfirm={() => {
+            setConfirming(false);
+            setLevel("advanced");
+          }}
+        />
+      )}
       <BlocklyWorkspace
         level={level}
         locale={locale}
